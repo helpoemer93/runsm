@@ -1,0 +1,27 @@
+{
+  "id": "stage4-mixed",
+  "length": 4000,
+  "obstacles": [],
+  "items": [],
+  "randomTrack": {
+    "weights": {
+      "ground": 3,
+      "highGround": 2,
+      "ceiling": 3,
+      "platform": 3,
+      "pit": 3
+    }
+  },
+  "randomDrops": {
+    "count": 50,
+    "weights": {
+      "coin1": 32,
+      "coin5": 9,
+      "coin20": 1,
+      "heal": 2,
+      "magnet": 1,
+      "dash": 1,
+      "giant": 1
+    }
+  }
+}

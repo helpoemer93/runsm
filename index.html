@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>runsm 시연</title>
+    <style>
+      body {
+        margin: 0;
+        background: #222;
+        color: #eee;
+        font-family: sans-serif;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 20px;
+        gap: 14px;
+      }
+      h1 {
+        margin: 0;
+        font-size: 26px;
+        letter-spacing: 2px;
+      }
+      canvas {
+        background: #87ceeb;
+        border: 2px solid #444;
+        max-width: 100%;
+        height: auto;
+      }
+      .info {
+        font-size: 13px;
+        font-family: monospace;
+        white-space: pre-line;
+        text-align: center;
+        line-height: 1.5;
+      }
+      .header-stat {
+        font-size: 16px;
+        color: #ddd;
+      }
+      .header-stat strong {
+        color: #fc0;
+        font-size: 22px;
+        margin-left: 8px;
+        font-family: monospace;
+      }
+      .card {
+        background: #2c2c2c;
+        border: 1px solid #555;
+        padding: 12px 14px;
+        border-radius: 6px;
+        min-height: 110px;
+      }
+      .card h3 {
+        margin: 0 0 6px;
+        font-size: 11px;
+        color: #888;
+        letter-spacing: 2px;
+      }
+      .card .name {
+        font-size: 16px;
+        font-weight: bold;
+        margin-bottom: 6px;
+        color: #fff;
+      }
+      .card .detail {
+        font-size: 12px;
+        color: #bbb;
+        line-height: 1.6;
+        white-space: pre-line;
+      }
+      .card.selectable {
+        cursor: pointer;
+        transition: border-color 0.1s;
+      }
+      .card.selectable:hover {
+        border-color: #fc0;
+      }
+      .card.selectable::after {
+        content: "▾ 클릭해서 변경";
+        display: block;
+        font-size: 10px;
+        color: #888;
+        margin-top: 6px;
+        letter-spacing: 1px;
+      }
+      .select-list {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        max-height: 360px;
+        overflow-y: auto;
+      }
+      .select-item {
+        background: #2c2c2c;
+        border: 1px solid #444;
+        border-radius: 4px;
+        padding: 8px 12px;
+        cursor: pointer;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .select-item:hover {
+        border-color: #fc0;
+        background: #333;
+      }
+      .select-item.current {
+        border-color: #fc0;
+        background: #2a2a1a;
+      }
+      .select-item .name {
+        font-size: 14px;
+        font-weight: bold;
+        color: #fff;
+      }
+      .select-item .detail {
+        font-size: 11px;
+        color: #aaa;
+        white-space: pre-line;
+        line-height: 1.5;
+      }
+      .select-item .badge {
+        font-size: 10px;
+        color: #fc0;
+        letter-spacing: 1px;
+      }
+      .button {
+        background: #fb3;
+        color: #222;
+        border: none;
+        padding: 10px 36px;
+        font-size: 16px;
+        font-weight: bold;
+        border-radius: 4px;
+        cursor: pointer;
+        letter-spacing: 4px;
+      }
+      .button:hover {
+        background: #fc5;
+      }
+      .small-button {
+        background: #555;
+        color: #fff;
+        border: none;
+        padding: 6px 16px;
+        font-size: 13px;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      .small-button:hover {
+        background: #666;
+      }
+      #game-canvases {
+        display: grid;
+        /* 폭 충분하면 2열, 좁으면 자동으로 1열로 줄 바꿈 */
+        grid-template-columns: repeat(auto-fit, minmax(0, 824px));
+        gap: 12px;
+        justify-content: center;
+        width: 100%;
+      }
+      .bot-slot {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+        border: 1px solid #333;
+        border-radius: 6px;
+        padding: 10px;
+        background: #1a1a1a;
+        width: 100%;
+        max-width: 824px; /* 캔버스 800 + 좌우 패딩·테두리 */
+        box-sizing: border-box;
+      }
+      .bot-slot-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        width: 100%;
+        font-size: 14px;
+        color: #aaa;
+      }
+      .bot-slot-header .title {
+        font-size: 15px;
+        font-weight: bold;
+        color: #fff;
+        letter-spacing: 1px;
+      }
+      .bot-stats {
+        width: 100%;
+        font-family: monospace;
+        font-size: 12px;
+        color: #ddd;
+        background: #111;
+        border: 1px solid #333;
+        border-radius: 4px;
+        padding: 4px 8px;
+        box-sizing: border-box;
+      }
+      /* 게임/로비 두 영역이 같은 자리를 차지 — 토글해도 슬롯 크기가 안 변함 */
+      .bot-slot .view-area {
+        position: relative;
+        width: 100%;
+        height: 500px; /* 인벤토리 카드까지 들어갈 공간 */
+      }
+      .bot-slot .game-view,
+      .bot-slot .lobby-view {
+        position: absolute;
+        inset: 0;
+        display: none;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 8px;
+      }
+      .bot-slot[data-status="running"] .game-view {
+        display: flex;
+      }
+      .bot-slot[data-status="lobby"] .lobby-view {
+        display: flex;
+      }
+      .lobby-cards {
+        display: grid;
+        /* 폭 충분하면 2열, 좁으면 1열 */
+        grid-template-columns: repeat(auto-fit, minmax(0, 240px));
+        gap: 12px;
+        justify-content: center;
+        width: 100%;
+      }
+      .inv-card {
+        background: #2c2c2c;
+        border: 1px solid #555;
+        padding: 8px 12px;
+        border-radius: 6px;
+        width: 100%;
+        max-width: 740px;
+        box-sizing: border-box;
+      }
+      .inv-card h3 {
+        margin: 0 0 6px;
+        font-size: 11px;
+        color: #888;
+        letter-spacing: 2px;
+      }
+      .slots {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+      }
+      .slot {
+        background: #1f1f1f;
+        border: 1px solid #444;
+        border-radius: 4px;
+        padding: 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        min-height: 82px;
+      }
+      .slot-label {
+        font-size: 10px;
+        color: #888;
+        letter-spacing: 1px;
+      }
+      .slot-name {
+        font-size: 13px;
+        font-weight: bold;
+        color: #fff;
+      }
+      .slot.empty .slot-name {
+        color: #666;
+        font-weight: normal;
+      }
+      .slot-detail {
+        font-size: 11px;
+        color: #aaa;
+      }
+      .bag {
+        max-height: 110px;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .bag-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: #1f1f1f;
+        padding: 4px 8px;
+        border-radius: 4px;
+      }
+      .bag-item-info {
+        display: flex;
+        flex-direction: column;
+      }
+      .bag-item-name {
+        font-size: 12px;
+        color: #fff;
+      }
+      .bag-item-detail {
+        font-size: 10px;
+        color: #aaa;
+      }
+      .bag-empty {
+        font-size: 12px;
+        color: #666;
+        text-align: center;
+        padding: 8px;
+      }
+      .small-button:disabled {
+        background: #333;
+        color: #666;
+        cursor: not-allowed;
+      }
+      .small-button.danger {
+        background: #844;
+      }
+      .small-button.danger:hover {
+        background: #a55;
+      }
+      .small-button.enhance {
+        background: #486;
+      }
+      .small-button.enhance:hover {
+        background: #5a8;
+      }
+      .bag-item-actions {
+        display: flex;
+        gap: 4px;
+      }
+      .slot-actions {
+        display: flex;
+        gap: 4px;
+        margin-top: 4px;
+      }
+      .slot-actions .small-button {
+        flex: 1;
+        padding: 4px 0;
+        font-size: 11px;
+      }
+      .lv {
+        color: #fc0;
+        font-weight: bold;
+        font-size: 12px;
+      }
+      .button:disabled {
+        background: #555;
+        color: #888;
+        cursor: not-allowed;
+      }
+      .header-bar {
+        display: flex;
+        align-items: center;
+        gap: 24px;
+      }
+      .header-bar .button {
+        padding: 8px 20px;
+        font-size: 14px;
+        letter-spacing: 2px;
+      }
+      .button.error {
+        background: #844;
+        color: #fff;
+      }
+      .button.error:hover {
+        background: #a55;
+      }
+      .button.error[data-empty="1"] {
+        background: #444;
+        color: #888;
+      }
+      .button.debug {
+        background: #357;
+      }
+      .button.debug:hover {
+        background: #468;
+      }
+      .debug-row {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+      }
+      .debug-row label {
+        display: flex;
+        flex-direction: column;
+        font-size: 12px;
+        color: #ccc;
+        gap: 4px;
+      }
+      .debug-row input,
+      .debug-row select {
+        background: #1f1f1f;
+        border: 1px solid #555;
+        color: #fff;
+        padding: 6px 8px;
+        font-family: monospace;
+        font-size: 14px;
+        border-radius: 4px;
+      }
+      .error-modal {
+        width: 720px;
+      }
+      .error-actions {
+        display: flex;
+        gap: 6px;
+      }
+      .error-log {
+        width: 100%;
+        height: 360px;
+        background: #0f0f0f;
+        border: 1px solid #444;
+        color: #ddd;
+        font-family: monospace;
+        font-size: 11px;
+        padding: 8px;
+        box-sizing: border-box;
+        resize: vertical;
+        white-space: pre;
+        overflow: auto;
+      }
+      .modal-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.7);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 100;
+      }
+      .modal-backdrop[hidden] {
+        display: none;
+      }
+      .modal {
+        background: #1a1a1a;
+        border: 1px solid #555;
+        border-radius: 8px;
+        padding: 20px 24px;
+        width: 480px;
+        max-width: 92vw;
+        color: #eee;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+      .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .modal-header h2 {
+        margin: 0;
+        font-size: 22px;
+        letter-spacing: 3px;
+      }
+      .shop-message {
+        font-size: 13px;
+        min-height: 18px;
+        color: #fc0;
+      }
+      .shop-section {
+        background: #2c2c2c;
+        border: 1px solid #444;
+        border-radius: 6px;
+        padding: 12px 14px;
+      }
+      .shop-section h3 {
+        margin: 0 0 8px;
+        font-size: 13px;
+        color: #ddd;
+        letter-spacing: 2px;
+      }
+      .shop-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+      }
+      .shop-desc {
+        font-size: 12px;
+        line-height: 1.6;
+        color: #ccc;
+      }
+      .shop-desc .muted {
+        color: #888;
+      }
+      .shop-cta {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 6px;
+      }
+      .cost {
+        font-size: 12px;
+        color: #aaa;
+      }
+      .cost strong {
+        color: #fc0;
+        font-family: monospace;
+        font-size: 14px;
+        margin-left: 4px;
+      }
+      /* 방치 후 돌아왔을 때 시뮬 따라잡는 동안 표시되는 오버레이 */
+      #catchup-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.78);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        z-index: 200;
+        color: #fff;
+        font-family: sans-serif;
+      }
+      #catchup-overlay[hidden] {
+        display: none;
+      }
+      #catchup-overlay .title {
+        font-size: 22px;
+        letter-spacing: 4px;
+      }
+      #catchup-overlay .remain {
+        font-size: 16px;
+        font-family: monospace;
+        color: #fc0;
+      }
+      #catchup-overlay .hint {
+        font-size: 12px;
+        color: #aaa;
+      }
+      /* 좁은 화면(스마트폰 세로 등) 대응 */
+      @media (max-width: 640px) {
+        body {
+          padding: 12px 6px;
+          gap: 10px;
+        }
+        h1 {
+          font-size: 20px;
+          letter-spacing: 1px;
+        }
+        .header-bar {
+          flex-wrap: wrap;
+          gap: 10px;
+          justify-content: center;
+        }
+        /* 뷰 영역 고정 높이 해제 — 로비 카드가 세로로 쌓여도 잘리지 않게 */
+        .bot-slot .view-area {
+          position: static;
+          height: auto;
+        }
+        .bot-slot .game-view,
+        .bot-slot .lobby-view {
+          position: static;
+          inset: auto;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <h1>runsm</h1>
+
+    <div class="header-bar">
+      <div class="header-stat">누적 코인 <strong id="total-coins">0</strong></div>
+      <button id="shop-button" class="button">상점</button>
+      <button id="error-button" class="button error">에러리포트 <span id="error-count">0</span></button>
+      <button id="debug-button" class="button debug">디버그 시드</button>
+    </div>
+
+    <div id="game-canvases"></div>
+
+    <div id="debug-modal" class="modal-backdrop" hidden>
+      <div class="modal">
+        <div class="modal-header">
+          <h2>디버그 시드</h2>
+          <button id="debug-close" class="small-button">닫기</button>
+        </div>
+        <div id="debug-status" class="shop-message"></div>
+        <div class="shop-desc">
+          시드 값을 직접 입력해서 같은 시뮬레이션을 재현합니다.
+          <br /><span class="muted">선택한 봇이 로비 상태여야 사용 가능. 사망 후 자동 재출발은 일반 시드로 진행됩니다.</span>
+        </div>
+        <div class="debug-row">
+          <label>시드 <input id="debug-seed" type="number" min="0" /></label>
+          <label class="debug-bot">
+            <span>봇 선택</span>
+            <select id="debug-bot"></select>
+          </label>
+        </div>
+        <button id="debug-launch" class="button">이 시드로 출발</button>
+      </div>
+    </div>
+
+    <div id="error-modal" class="modal-backdrop" hidden>
+      <div class="modal error-modal">
+        <div class="modal-header">
+          <h2>에러리포트</h2>
+          <div class="error-actions">
+            <button id="error-copy" class="small-button">전체 복사</button>
+            <button id="error-clear" class="small-button danger">전체 삭제</button>
+            <button id="error-close" class="small-button">닫기</button>
+          </div>
+        </div>
+        <div id="error-status" class="shop-message"></div>
+        <textarea id="error-log" class="error-log" readonly></textarea>
+      </div>
+    </div>
+
+    <div id="select-modal" class="modal-backdrop" hidden>
+      <div class="modal">
+        <div class="modal-header">
+          <h2 id="select-modal-title">선택</h2>
+          <button id="select-close" class="small-button">닫기</button>
+        </div>
+        <div id="select-list" class="select-list"></div>
+      </div>
+    </div>
+
+    <div id="shop-modal" class="modal-backdrop" hidden>
+      <div class="modal">
+        <div class="modal-header">
+          <h2>상점</h2>
+          <button id="shop-close" class="small-button">닫기</button>
+        </div>
+        <div id="shop-message" class="shop-message"></div>
+        <div class="shop-section">
+          <h3>장비 뽑기</h3>
+          <div class="shop-row">
+            <div class="shop-desc">
+              현재 풀에서 균등 확률로 1개 획득.<br />
+              <span id="gacha-pool" class="muted"></span>
+            </div>
+            <div class="shop-cta">
+              <div class="cost">비용 <strong id="gacha-cost">0</strong></div>
+              <button id="gacha-button" class="button">뽑기</button>
+            </div>
+          </div>
+        </div>
+        <div class="shop-section">
+          <h3>가방 칸 늘리기</h3>
+          <div class="shop-row">
+            <div class="shop-desc">
+              현재 가방: <span id="bag-current">0</span>칸<br />
+              <span class="muted">한 번에 5칸씩, 다음 단계마다 가격 상승</span>
+            </div>
+            <div class="shop-cta">
+              <div class="cost">비용 <strong id="expand-cost">0</strong></div>
+              <button id="expand-button" class="button">+5칸</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="catchup-overlay" hidden>
+      <div class="title">따라잡는 중…</div>
+      <div class="remain"><span id="catchup-remain">0.0</span>초 남음</div>
+      <div class="hint">방치 동안 흐른 시간을 시뮬레이션하고 있어요.</div>
+    </div>
+
+    <script type="module" src="/src/web/main.ts"></script>
+  </body>
+</html>

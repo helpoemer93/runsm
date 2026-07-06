@@ -1,0 +1,8 @@
+{
+  "id": "heal-talisman",
+  "name": "회복 부적",
+  "healDashSeconds": 2,
+  "enhanceDelta": {
+    "healDashSeconds": 0.1
+  }
+}

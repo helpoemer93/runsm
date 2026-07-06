@@ -1,0 +1,9 @@
+{
+  "id": "destroyer",
+  "name": "파괴자 펫",
+  "skill": {
+    "id": "destroyer",
+    "cooldown": 8,
+    "duration": 0.1
+  }
+}

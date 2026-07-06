@@ -1,0 +1,8 @@
+{
+  "id": "speed-shoes",
+  "name": "가벼운 신발",
+  "runSpeedMult": 1.1,
+  "enhanceDelta": {
+    "runSpeedMult": 0.01
+  }
+}

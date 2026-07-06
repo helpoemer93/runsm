@@ -1,0 +1,16 @@
+{
+  "id": "default",
+  "name": "기본 러너",
+  "runSpeed": 300,
+  "jumpVelocity": 750,
+  "width": 30,
+  "height": 50,
+  "slideHeight": 25,
+  "maxHp": 100,
+  "maxJumps": 2,
+  "skill": {
+    "id": "dash",
+    "cooldown": 10,
+    "duration": 3
+  }
+}

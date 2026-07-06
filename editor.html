@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <title>runsm 트랙 에디터</title>
+    <style>
+      body {
+        margin: 0;
+        background: #222;
+        color: #eee;
+        font-family: sans-serif;
+        padding: 20px;
+      }
+      h1 { margin: 0 0 12px; }
+      .editor-row { display: flex; gap: 20px; align-items: flex-start; }
+      canvas#editor-canvas {
+        background: #87ceeb;
+        border: 2px solid #444;
+        cursor: crosshair;
+        display: block;
+      }
+      .scroll-row { margin-top: 8px; display: flex; gap: 8px; align-items: center; }
+      .scroll-row input[type=range] { flex: 1; }
+      .panel { width: 340px; }
+      .panel h3 { margin: 18px 0 6px; font-size: 14px; color: #ccc; }
+      .panel h3:first-child { margin-top: 0; }
+      .tools { display: grid; grid-template-columns: 1fr; gap: 4px; }
+      .tools button {
+        padding: 7px 8px;
+        background: #333;
+        color: #eee;
+        border: 1px solid #555;
+        cursor: pointer;
+        text-align: left;
+        font-size: 12px;
+      }
+      .tools button.active { background: #46c; border-color: #6af; }
+      .tools button:hover { background: #444; }
+      .field { display: flex; gap: 6px; align-items: center; margin: 4px 0; font-size: 13px; }
+      .field label { width: 60px; }
+      .field input[type=text], .field input[type=number] {
+        flex: 1; padding: 5px; background: #333; color: #eee; border: 1px solid #555; font-family: monospace;
+      }
+      textarea {
+        width: 100%;
+        background: #1a1a1a;
+        color: #b8e8b8;
+        border: 1px solid #555;
+        font-family: monospace;
+        font-size: 12px;
+        padding: 6px;
+        box-sizing: border-box;
+      }
+      .panel button.action {
+        padding: 6px 10px;
+        background: #333;
+        color: #eee;
+        border: 1px solid #555;
+        cursor: pointer;
+        font-size: 13px;
+        margin-right: 4px;
+        margin-top: 4px;
+      }
+      .panel button.action:hover { background: #444; }
+      .hint { color: #888; font-size: 12px; margin-top: 6px; }
+      a { color: #6af; }
+    </style>
+  </head>
+  <body>
+    <h1>runsm 트랙 에디터</h1>
+    <p class="hint">
+      도구 선택 후 캔버스 클릭. 장애물·천장은 드래그로 폭 지정. 우클릭·지우개로 삭제. 10px 격자 스냅. 좌상단 빨간 영역은 안전 구간.
+      <a href="/">← 시뮬로 돌아가기</a>
+    </p>
+
+    <div class="editor-row">
+      <div>
+        <canvas id="editor-canvas" width="1200" height="320"></canvas>
+        <div class="scroll-row">
+          <button class="action" id="scroll-left">←</button>
+          <input type="range" id="scroll" min="0" max="0" value="0" />
+          <button class="action" id="scroll-right">→</button>
+          <span id="scroll-label" style="font-family:monospace; font-size:12px; color:#aaa;">0</span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>장애물</h3>
+        <div class="tools">
+          <button data-tool="low-obstacle">낮은 장애물 (h=30, 드래그)</button>
+          <button data-tool="high-obstacle">높은 장애물 (h=150, 이단점프, 드래그)</button>
+          <button data-tool="ceiling-obstacle">천장 장애물 (슬라이드용, 드래그)</button>
+        </div>
+
+        <h3>아이템 — 코인</h3>
+        <div class="tools">
+          <button data-tool="item-1">저가 코인 (v=1)</button>
+          <button data-tool="item-5">중가 코인 (v=5)</button>
+          <button data-tool="item-20">고가 코인 (v=20)</button>
+          <button data-tool="cluster">뭉치 (1×9, 3x3 격자)</button>
+        </div>
+
+        <h3>아이템 — 효과</h3>
+        <div class="tools">
+          <button data-tool="effect-heal">회복 (♥ hp +10)</button>
+          <button data-tool="effect-magnet">자석 (U 5초)</button>
+          <button data-tool="effect-dash">질주 (⚡ dash 발동)</button>
+          <button data-tool="effect-giant">거대화 (★ 5초)</button>
+        </div>
+
+        <h3>편집</h3>
+        <div class="tools">
+          <button data-tool="erase">지우개 (또는 우클릭)</button>
+        </div>
+
+        <h3>트랙 정보</h3>
+        <div class="field"><label>ID</label><input type="text" id="track-id" /></div>
+        <div class="field"><label>길이</label><input type="number" id="track-length" min="500" max="20000" step="100" /></div>
+
+        <h3>JSON</h3>
+        <textarea id="json-output" rows="12" readonly></textarea>
+        <div>
+          <button class="action" id="copy">클립보드 복사</button>
+          <button class="action" id="download">다운로드</button>
+        </div>
+        <div>
+          <button class="action" id="load-stage1">stage1 불러오기</button>
+          <button class="action" id="clear">전부 지우기</button>
+        </div>
+        <p class="hint">
+          다운로드한 JSON을 <code>src/data/stages/</code>에 넣으면 시뮬 트랙 풀에 자동 등록됩니다.
+        </p>
+      </div>
+    </div>
+
+    <script type="module" src="/src/editor/main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,27 @@
+{
+  "id": "stage2-jumps",
+  "length": 3500,
+  "obstacles": [],
+  "items": [],
+  "randomTrack": {
+    "weights": {
+      "ground": 3,
+      "highGround": 3,
+      "ceiling": 1,
+      "platform": 2,
+      "pit": 3
+    }
+  },
+  "randomDrops": {
+    "count": 44,
+    "weights": {
+      "coin1": 24,
+      "coin5": 12,
+      "coin20": 2,
+      "heal": 2,
+      "magnet": 1,
+      "dash": 2,
+      "giant": 1
+    }
+  }
+}

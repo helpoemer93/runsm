@@ -1,0 +1,12 @@
+{
+  "id": "coin-walker",
+  "name": "코인 워커",
+  "runSpeed": 300,
+  "jumpVelocity": 750,
+  "width": 30,
+  "height": 50,
+  "slideHeight": 25,
+  "maxHp": 100,
+  "maxJumps": 2,
+  "coinPerDistance": 100
+}

@@ -1,0 +1,9 @@
+{
+  "id": "firework",
+  "name": "축포 펫",
+  "skill": {
+    "id": "firework",
+    "cooldown": 5,
+    "duration": 0.1
+  }
+}

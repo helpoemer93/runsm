@@ -1,0 +1,27 @@
+{
+  "id": "stage3-slides",
+  "length": 3500,
+  "obstacles": [],
+  "items": [],
+  "randomTrack": {
+    "weights": {
+      "ground": 2,
+      "highGround": 1,
+      "ceiling": 5,
+      "platform": 2,
+      "pit": 2
+    }
+  },
+  "randomDrops": {
+    "count": 44,
+    "weights": {
+      "coin1": 20,
+      "coin5": 9,
+      "coin20": 1,
+      "heal": 2,
+      "magnet": 2,
+      "dash": 1,
+      "giant": 2
+    }
+  }
+}

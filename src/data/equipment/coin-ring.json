@@ -1,0 +1,8 @@
+{
+  "id": "coin-ring",
+  "name": "코인 반지",
+  "coinValueMult": 1.1,
+  "enhanceDelta": {
+    "coinValueMult": 0.01
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "id": "stage1",
+  "length": 5000,
+  "obstacles": [],
+  "items": [],
+  "randomTrack": {
+    "weights": {
+      "ground": 4,
+      "highGround": 1,
+      "ceiling": 2,
+      "platform": 1,
+      "pit": 2
+    }
+  },
+  "randomDrops": {
+    "count": 60,
+    "weights": {
+      "coin1": 40,
+      "coin5": 9,
+      "coin20": 1,
+      "heal": 2,
+      "magnet": 1,
+      "dash": 1,
+      "giant": 1
+    }
+  }
+}
