@@ -950,12 +950,15 @@ const airObstacleMeta: ObstacleSpriteMeta = {
   img: loadObstacleSprite("chandelier"),
   bottomMarginRatio: 0,
 };
-// 플랫폼(발판) — 서랍장 그림. 상단이 발판 면이라 하단 여백 조정 없음.
-// dresser 이미지(889×280) 비율이 platform 크기(250×80)와 거의 같아 늘려도 왜곡 없음.
+// 플랫폼(발판) — 서랍장 그림. 상단이 발판 면 = 봇 발끝이라 실 컨텐츠 bbox만
+// crop해서 platform 사각형에 정확히 맞춤. 원본 여백(상 29 하 13 좌우 15)을
+// 두면 서랍장·봇이 공중에 뜬 것처럼 보임.
 const platformObstacleMeta: ObstacleSpriteMeta = {
   img: loadObstacleSprite("dresser"),
   bottomMarginRatio: 0,
 };
+// dresser.png(889×280) 알파 실측 bbox — 공중 부양 해소용.
+const PLATFORM_SPRITE_CROP = { sx: 15, sy: 29, sw: 859, sh: 238 };
 
 // 아이템 스프라이트 — heal·magnet·dash·giant. 로드 실패·기타 effect는 원 fallback.
 function loadItemSprite(name: string): HTMLImageElement {
@@ -1668,7 +1671,12 @@ function drawTrack(
       // 플랫폼 — dresser 스프라이트 사용. 로드 전이면 색깔 사각형 fallback.
       const meta = platformObstacleMeta;
       if (meta.img.complete && meta.img.naturalWidth > 0) {
-        ctx.drawImage(meta.img, sx, GROUND_Y - yTop, o.width, o.height);
+        const c = PLATFORM_SPRITE_CROP;
+        ctx.drawImage(
+          meta.img,
+          c.sx, c.sy, c.sw, c.sh,
+          sx, GROUND_Y - yTop, o.width, o.height,
+        );
       } else {
         ctx.fillStyle = "#8b6f47";
         ctx.fillRect(sx, GROUND_Y - yTop, o.width, 8);
