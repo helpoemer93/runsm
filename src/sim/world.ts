@@ -801,12 +801,26 @@ function fireFireworkSkill(world: World): void {
   }
 }
 
+// 캐릭터 특성 dashGiant가 있으면 giant를 지정 지속시간만큼 활성.
+// 기존 giantTicks가 더 길면 그쪽 유지(아이템 giant 잔여 시간 존중).
+function activateDashGiantIfApplicable(world: World, ticks: number): void {
+  if (!world.loadout.character.dashGiant) return;
+  world.runner.giantTicks = Math.max(world.runner.giantTicks, ticks);
+}
+
 // 스킬이 이 틱에 막 활성화됐을 때 발동되는 1회성 효과 (trigger 타입 스킬).
 function handleSkillActivation(world: World, skillId: string): void {
   if (skillId === "destroyer") {
     fireDestroyerSkill(world);
   } else if (skillId === "firework") {
     fireFireworkSkill(world);
+  } else if (skillId === "dash") {
+    // 대시 스킬 활성 순간(자체 발동·아이템 dash로 스킬 켜진 경우 모두)에
+    // dashGiant 특성이 있으면 거대화도 동일 지속시간으로 활성.
+    // +1: 이 시점 이후 같은 step 안에서 giantTicks--가 실행되므로 이를 흡수해
+    // dash activeTicks와 giantTicks가 같은 틱에 0에 도달하도록 정렬한다.
+    const dashSkill = world.skills.find((s) => s.spec.id === "dash");
+    if (dashSkill) activateDashGiantIfApplicable(world, dashSkill.durationTotalTicks + 1);
   }
 }
 
@@ -820,9 +834,13 @@ function applyItemEffect(world: World, item: Item | SpawnedItem): void {
     if (dashSkill) {
       dashSkill.activeTicks = dashSkill.durationTotalTicks;
       dashSkill.cooldownTicks = 0;
+      // dash 스킬이 방금 켜졌으면 같은 step() 안 트랜지션 감지가 handleSkillActivation을
+      // 부르고 거기서 dashGiant 처리됨. 여기 별도 처리 불필요.
     } else {
-      // dash 스킬 없는 캐릭(예: 머루)도 dash 아이템 효과 받게 — itemDashTicks fallback
+      // dash 스킬 없는 캐릭도 dash 아이템 효과 받게 — itemDashTicks fallback.
+      // 이 경로에서는 스킬 활성화 이벤트가 없으니 dashGiant를 직접 트리거.
       r.itemDashTicks = Math.max(r.itemDashTicks, DASH_ITEM_FALLBACK_TICKS);
+      activateDashGiantIfApplicable(world, DASH_ITEM_FALLBACK_TICKS);
     }
   } else if (item.effect === "giant") {
     r.giantTicks = Math.max(r.giantTicks, GIANT_DURATION_TICKS);
@@ -836,6 +854,8 @@ function applyItemEffect(world: World, item: Item | SpawnedItem): void {
     if (totalSec > 0) {
       const ticks = Math.round(totalSec / TICK_DURATION);
       r.itemDashTicks = Math.max(r.itemDashTicks, ticks);
+      // healDash로 대시 상태가 되면 dashGiant 특성 발동.
+      activateDashGiantIfApplicable(world, ticks);
     }
   } else {
     r.coins += item.value ?? 1;

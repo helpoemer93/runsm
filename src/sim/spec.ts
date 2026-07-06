@@ -24,6 +24,9 @@ export interface CharacterSpec {
   // 스프라이트 세트 id. 생략 시 캐릭터 id를 그대로 사용.
   // 렌더 코드가 이 값을 키로 스프라이트 세트를 조회.
   spriteId?: string;
+  // 대시가 활성화되는 순간(스킬 자체 발동·아이템 dash·회복부적 healDash 어느 경로든)
+  // 거대화(giant)도 동일 지속시간만큼 함께 활성. 기존 giantTicks가 더 길면 그쪽 유지.
+  dashGiant?: boolean;
 }
 
 export interface PetSpec {

@@ -8,6 +8,7 @@
   "slideHeight": 25,
   "maxHp": 100,
   "maxJumps": 2,
+  "dashGiant": true,
   "skill": {
     "id": "dash",
     "cooldown": 10,
