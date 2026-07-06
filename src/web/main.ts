@@ -654,15 +654,12 @@ function fillInternalHoles(img: HTMLImageElement): HTMLCanvasElement {
 }
 
 interface SpriteSetConfig {
-  runPath: string;
   runFrames: CatFrame[];
   runSrcH: number;
   runPxPerFrame: number;
-  slidePath: string;
   slideFrames: SlideFrame[];
   slideSrcH: number;
   slidePxPerFrame: number;
-  jumpPath: string;
   // 점프가 단일 프레임인 캐릭터는 launch·air 모두 같은 프레임 하나로 지정.
   jumpLaunchFrames: CatFrame[];
   jumpAirFrames: CatFrame[];
@@ -671,6 +668,34 @@ interface SpriteSetConfig {
   jumpAirPxPerFrame: number;
   // 점프 이미지 내부 구멍(눈 등) 채움 처리 필요 여부.
   jumpFillInternalHoles: boolean;
+}
+
+// 캐릭터 스프라이트 파일 로더. Vite의 new URL 정적 분석이 리터럴 조각 + 변수 조합만
+// 처리하므로 종류(run/slide/jump)별로 함수를 분리해서 각 URL 리터럴을 명시.
+// spriteId는 IMG/characters/<spriteId>/ 폴더명과 일치해야 함.
+function loadCharacterRunImg(spriteId: string): HTMLImageElement {
+  const img = new Image();
+  img.src = new URL(
+    `../../IMG/characters/${spriteId}/run.png`,
+    import.meta.url,
+  ).href;
+  return img;
+}
+function loadCharacterSlideImg(spriteId: string): HTMLImageElement {
+  const img = new Image();
+  img.src = new URL(
+    `../../IMG/characters/${spriteId}/slide.png`,
+    import.meta.url,
+  ).href;
+  return img;
+}
+function loadCharacterJumpImg(spriteId: string): HTMLImageElement {
+  const img = new Image();
+  img.src = new URL(
+    `../../IMG/characters/${spriteId}/jump.png`,
+    import.meta.url,
+  ).href;
+  return img;
 }
 
 interface CharacterSpriteSet {
@@ -695,13 +720,13 @@ interface CharacterSpriteSet {
   jumpLaunchDist: number;
 }
 
-function loadCharacterSpriteSet(cfg: SpriteSetConfig): CharacterSpriteSet {
-  const runImg = new Image();
-  runImg.src = new URL(cfg.runPath, import.meta.url).href;
-  const slideImg = new Image();
-  slideImg.src = new URL(cfg.slidePath, import.meta.url).href;
-  const jumpImg = new Image();
-  jumpImg.src = new URL(cfg.jumpPath, import.meta.url).href;
+function loadCharacterSpriteSet(
+  spriteId: string,
+  cfg: SpriteSetConfig,
+): CharacterSpriteSet {
+  const runImg = loadCharacterRunImg(spriteId);
+  const slideImg = loadCharacterSlideImg(spriteId);
+  const jumpImg = loadCharacterJumpImg(spriteId);
   const set: CharacterSpriteSet = {
     runImg,
     runReady: false,
@@ -740,8 +765,7 @@ function loadCharacterSpriteSet(cfg: SpriteSetConfig): CharacterSpriteSet {
 // 달리기: 2400×1350, 7행 × 7열 = 49프레임 (프레임별 실측).
 // 슬라이드: 951×262, 하단 6프레임 사용 (상단은 도약/공격 자세).
 // 점프: 1433×2400, 1행 5프레임 이륙 원샷 → 2행 앞 4프레임 공중 루프.
-const HWANGTAE_SPRITES = loadCharacterSpriteSet({
-  runPath: "../../IMG/characters/hwangtae/run.png",
+const HWANGTAE_SPRITES = loadCharacterSpriteSet("hwangtae", {
   runFrames: [
     { x: 114, w: 109, bot: 126 },
     { x: 458, w: 108, bot: 127 },
@@ -795,7 +819,6 @@ const HWANGTAE_SPRITES = loadCharacterSpriteSet({
   ],
   runSrcH: 76,
   runPxPerFrame: 8,
-  slidePath: "../../IMG/characters/hwangtae/slide.png",
   slideFrames: [
     { x: 9, w: 147, bot: 232 },
     { x: 166, w: 146, bot: 232 },
@@ -806,7 +829,6 @@ const HWANGTAE_SPRITES = loadCharacterSpriteSet({
   ],
   slideSrcH: 55,
   slidePxPerFrame: 20,
-  jumpPath: "../../IMG/characters/hwangtae/jump.png",
   jumpLaunchFrames: [
     { x: 0, w: 274, bot: 317 },
     { x: 292, w: 262, bot: 337 },
@@ -830,8 +852,7 @@ const HWANGTAE_SPRITES = loadCharacterSpriteSet({
 // 달리기: 678×368, 5행 × 5열 = 25프레임 (실측).
 // 슬라이드: 951×262, 2행 × 6열 = 12프레임 (실측, 상·하단 모두 슬라이드 자세).
 // 점프: 677×369, 단일 프레임. 이륙·공중 모두 같은 프레임 재사용.
-const MERU_SPRITES = loadCharacterSpriteSet({
-  runPath: "../../IMG/characters/meru/run.png",
+const MERU_SPRITES = loadCharacterSpriteSet("meru", {
   runFrames: [
     { x: 21, w: 87, bot: 68 },
     { x: 159, w: 85, bot: 68 },
@@ -861,7 +882,6 @@ const MERU_SPRITES = loadCharacterSpriteSet({
   ],
   runSrcH: 70,
   runPxPerFrame: 6, // 25프레임 사이클을 황태(49프레임)와 비슷한 시간으로 유지.
-  slidePath: "../../IMG/characters/meru/slide.png",
   slideFrames: [
     { x: 8, w: 141, bot: 125 },
     { x: 164, w: 143, bot: 125 },
@@ -878,7 +898,6 @@ const MERU_SPRITES = loadCharacterSpriteSet({
   ],
   slideSrcH: 70,
   slidePxPerFrame: 12, // 12프레임 사이클 유지.
-  jumpPath: "../../IMG/characters/meru/jump.png",
   jumpLaunchFrames: [{ x: 221, w: 251, bot: 366 }],
   jumpAirFrames: [{ x: 221, w: 251, bot: 366 }],
   jumpSrcH: 360,
