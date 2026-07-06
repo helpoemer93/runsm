@@ -821,7 +821,7 @@ function applyItemEffect(world: World, item: Item | SpawnedItem): void {
       dashSkill.activeTicks = dashSkill.durationTotalTicks;
       dashSkill.cooldownTicks = 0;
     } else {
-      // dash 스킬 없는 캐릭(coin-walker 등)도 dash 아이템 효과 받게 — itemDashTicks fallback
+      // dash 스킬 없는 캐릭(예: 머루)도 dash 아이템 효과 받게 — itemDashTicks fallback
       r.itemDashTicks = Math.max(r.itemDashTicks, DASH_ITEM_FALLBACK_TICKS);
     }
   } else if (item.effect === "giant") {

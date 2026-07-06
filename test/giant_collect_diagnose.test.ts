@@ -6,8 +6,8 @@ import { createWorld, step, TICK_DURATION } from "../src/sim/world";
 import { CharacterSpec, EquipmentSpec, Loadout, PetSpec } from "../src/sim/spec";
 import { Stage, Item } from "../src/sim/stage";
 
-import defaultChar from "../src/data/characters/default.json";
-import destroyerPet from "../src/data/pets/destroyer.json";
+import defaultChar from "../src/data/characters/hwangtae.json";
+import destroyerPet from "../src/data/pets/nurungji.json";
 
 const testStage: Stage = {
   id: "giant-test",

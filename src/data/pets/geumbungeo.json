@@ -1,0 +1,10 @@
+{
+  "id": "geumbungeo",
+  "name": "금붕어",
+  "description": "장애물을 파괴하고 그 자리에 코인을 흩뿌립니다.",
+  "skill": {
+    "id": "firework",
+    "cooldown": 5,
+    "duration": 0.1
+  }
+}

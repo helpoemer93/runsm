@@ -3,7 +3,7 @@ import { createWorld, step, Input } from "../src/sim/world";
 import { EMPTY_STAGE, Stage } from "../src/sim/stage";
 import { CharacterSpec, Loadout } from "../src/sim/spec";
 import { DEFAULT_LOADOUT, DEFAULT_CHARACTER } from "./_helpers";
-import coinWalkerCharData from "../src/data/characters/coin-walker.json";
+import coinWalkerCharData from "../src/data/characters/meru.json";
 
 const NO_INPUT: Input = { jump: false, slide: false };
 

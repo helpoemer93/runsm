@@ -1,6 +1,6 @@
 {
-  "id": "coin-walker",
-  "name": "코인 워커",
+  "id": "hwangtae",
+  "name": "황태",
   "runSpeed": 300,
   "jumpVelocity": 750,
   "width": 30,
@@ -8,5 +8,9 @@
   "slideHeight": 25,
   "maxHp": 100,
   "maxJumps": 2,
-  "coinPerDistance": 100
+  "skill": {
+    "id": "dash",
+    "cooldown": 10,
+    "duration": 3
+  }
 }

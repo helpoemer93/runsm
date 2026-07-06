@@ -1,7 +1,7 @@
 import { createWorld, step, TICK_DURATION, World } from "../sim/world";
 import { decide } from "../sim/bot";
 import { Stage } from "../sim/stage";
-import { EquipmentSpec, Loadout } from "../sim/spec";
+import { CharacterSpec, EquipmentSpec, Loadout } from "../sim/spec";
 import {
   InventoryState,
   ItemInstance,
@@ -536,9 +536,13 @@ function renderSelectModal() {
       <div class="detail">펫 효과 없음</div>
     </div>`;
     const items = allPets().map((p) => {
+      // description(자연어 설명)이 있으면 그걸 우선 표시. 없으면 기존 fallback.
+      const descLine =
+        p.description ??
+        (p.skill ? `스킬: ${p.skill.id}` : "(효과 없음)");
       const detail = p.skill
-        ? `스킬: ${p.skill.id} (쿨 ${p.skill.cooldown}초)`
-        : "(효과 없음)";
+        ? `${descLine}\n쿨 ${p.skill.cooldown}초`
+        : descLine;
       const isCurrent = p.id === currentId;
       return `<div class="select-item ${isCurrent ? "current" : ""}" data-id="${escapeHtml(p.id)}">
         <div class="name">${escapeHtml(p.name)}${isCurrent ? ` <span class="badge">현재</span>` : ""}</div>
@@ -579,123 +583,26 @@ const CANVAS_W = 800;
 const CANVAS_H = 300;
 const TRAIL_LENGTH = 6;
 
-// 기본 캐릭터 달리기 스프라이트 (Running3: 2400×1350, 7행 × 7열 = 49프레임, 배경 투명).
-// 프레임별 x·w·bot 알파 분석 실측 — 발끝 crop 하단 정렬로 흔들림 제거.
+// ==== 캐릭터 스프라이트 세트 ====
+// 캐릭터별 달리기·슬라이드·점프 스프라이트를 세트로 묶는다. 렌더 코드가 봇의
+// character.spriteId(생략 시 character.id)로 세트를 조회해 사용.
+// 새 캐릭터 추가 흐름: IMG/characters/<id>/{run,slide,jump,portrait}.png 넣기 →
+// 프레임 좌표 실측(tools/analyze_*.mjs) → 아래에 SpriteSetConfig 하나 추가 →
+// CHARACTER_SPRITE_SETS에 등록.
 // Vite가 `new URL(..., import.meta.url)`로 asset URL 변환해 번들 처리.
-const catRunSprite = new Image();
-catRunSprite.src = new URL(
-  "../../IMG/Cat01_Running3.png",
-  import.meta.url,
-).href;
-let catRunSpriteReady = false;
-catRunSprite.onload = () => {
-  catRunSpriteReady = true;
-};
 interface CatFrame {
   x: number;
   w: number;
   bot: number; // 시트 절대 좌표
 }
-const CAT_RUN_FRAMES: CatFrame[] = [
-  { x: 114, w: 109, bot: 126 },
-  { x: 458, w: 108, bot: 127 },
-  { x: 802, w: 108, bot: 127 },
-  { x: 1147, w: 105, bot: 127 },
-  { x: 1491, w: 104, bot: 127 },
-  { x: 1834, w: 104, bot: 127 },
-  { x: 2177, w: 103, bot: 127 },
-  { x: 120, w: 104, bot: 320 },
-  { x: 463, w: 104, bot: 320 },
-  { x: 805, w: 105, bot: 319 },
-  { x: 1146, w: 106, bot: 319 },
-  { x: 1488, w: 107, bot: 319 },
-  { x: 1831, w: 107, bot: 319 },
-  { x: 2175, w: 106, bot: 320 },
-  { x: 120, w: 104, bot: 513 },
-  { x: 464, w: 103, bot: 513 },
-  { x: 807, w: 102, bot: 513 },
-  { x: 1150, w: 102, bot: 513 },
-  { x: 1492, w: 103, bot: 513 },
-  { x: 1834, w: 104, bot: 513 },
-  { x: 2177, w: 104, bot: 513 },
-  { x: 118, w: 106, bot: 705 },
-  { x: 460, w: 106, bot: 704 },
-  { x: 802, w: 107, bot: 705 },
-  { x: 1144, w: 108, bot: 705 },
-  { x: 1487, w: 108, bot: 704 },
-  { x: 1831, w: 107, bot: 706 },
-  { x: 2176, w: 105, bot: 706 },
-  { x: 120, w: 104, bot: 899 },
-  { x: 464, w: 102, bot: 899 },
-  { x: 807, w: 102, bot: 899 },
-  { x: 1149, w: 103, bot: 899 },
-  { x: 1491, w: 104, bot: 899 },
-  { x: 1834, w: 104, bot: 898 },
-  { x: 2176, w: 105, bot: 897 },
-  { x: 117, w: 107, bot: 1090 },
-  { x: 459, w: 107, bot: 1090 },
-  { x: 801, w: 108, bot: 1090 },
-  { x: 1145, w: 107, bot: 1091 },
-  { x: 1489, w: 106, bot: 1092 },
-  { x: 1834, w: 104, bot: 1092 },
-  { x: 2178, w: 103, bot: 1092 },
-  { x: 121, w: 103, bot: 1285 },
-  { x: 464, w: 102, bot: 1285 },
-  { x: 806, w: 103, bot: 1285 },
-  { x: 1148, w: 104, bot: 1284 },
-  { x: 1490, w: 105, bot: 1283 },
-  { x: 1832, w: 106, bot: 1283 },
-  { x: 2173, w: 108, bot: 1283 },
-];
-// 프레임별 실 cat height 70-75, 여유 포함 76.
-const CAT_RUN_SRC_H = 76;
-// 트랙 이동 이 픽셀당 프레임 하나 진행 — 49 프레임 → 사이클 유지 위해 값 작게.
-// 사이클 시간 = 49 × 이 값 / baseSpeed. 8이면 ~1.3s @ 300.
-const CAT_SPRITE_PX_PER_FRAME = 8;
-
-// 슬라이드 스프라이트 (951×262, 하단 6프레임만 사용 — 상단은 도약/공격 자세).
-// 프레임 x-range와 발끝 y는 알파 분석으로 실측.
-const catSlideSprite = new Image();
-catSlideSprite.src = new URL(
-  "../../IMG/Cat01_Sliding.png",
-  import.meta.url,
-).href;
-let catSlideSpriteReady = false;
-catSlideSprite.onload = () => {
-  catSlideSpriteReady = true;
-};
 interface SlideFrame {
   x: number;
   w: number;
   bot: number; // 프레임 로컬 발끝 y
 }
-const CAT_SLIDE_FRAMES: SlideFrame[] = [
-  { x: 9, w: 147, bot: 232 },
-  { x: 166, w: 146, bot: 232 },
-  { x: 323, w: 147, bot: 230 },
-  { x: 481, w: 146, bot: 231 },
-  { x: 639, w: 144, bot: 231 },
-  { x: 796, w: 147, bot: 233 },
-];
-const CAT_SLIDE_SRC_H = 55; // 프레임별 실제 height 51-55, 여유 포함.
-// 슬라이드 애니메이션은 짧으니 running보다 살짝 느리게 (한 사이클 5 프레임).
-const CAT_SLIDE_PX_PER_FRAME = 20;
 
-// 점프 스프라이트 (1433×2400, 5행 × 5열 = 25프레임).
-// 1행 5프레임 = 도약 준비(원샷), 2행 앞 4프레임 = 공중 유지 루프. 3~5행 미사용.
-const catJumpSprite = new Image();
-catJumpSprite.src = new URL(
-  "../../IMG/Cat01_Jumping.png",
-  import.meta.url,
-).href;
-let catJumpSpriteReady = false;
-// 원본은 눈 등 캐릭터 내부에도 알파 0 픽셀이 있어 뒷배경이 비침.
+// 눈 등 내부에 알파 0인 픽셀이 있는 이미지에서 배경 비침을 막기 위해,
 // 외곽부터 flood fill로 진짜 배경만 마킹 → 마킹 안 된 알파 0 픽셀(내부 구멍)만 검게 채움.
-let catJumpDrawSource: CanvasImageSource = catJumpSprite;
-catJumpSprite.onload = () => {
-  catJumpDrawSource = fillInternalHoles(catJumpSprite);
-  catJumpSpriteReady = true;
-};
 function fillInternalHoles(img: HTMLImageElement): HTMLCanvasElement {
   const w = img.naturalWidth;
   const h = img.naturalHeight;
@@ -745,28 +652,253 @@ function fillInternalHoles(img: HTMLImageElement): HTMLCanvasElement {
   cctx.putImageData(data, 0, 0);
   return c;
 }
-// 1행 (도약 준비) — 이륙 순간 순차 재생 후 공중 루프로 전환.
-const CAT_JUMP_LAUNCH_FRAMES: CatFrame[] = [
-  { x: 0, w: 274, bot: 317 },
-  { x: 292, w: 262, bot: 337 },
-  { x: 602, w: 228, bot: 343 },
-  { x: 868, w: 245, bot: 342 },
-  { x: 1154, w: 244, bot: 340 },
-];
-// 2행 인덱스 0~3 (공중 유지) — 착지 전까지 순환.
-const CAT_JUMP_AIR_FRAMES: CatFrame[] = [
-  { x: 23, w: 227, bot: 801 },
-  { x: 314, w: 223, bot: 787 },
-  { x: 597, w: 226, bot: 783 },
-  { x: 881, w: 228, bot: 781 },
-];
-// 프레임별 실 height 183~270, 여유 포함.
-const CAT_JUMP_SRC_H = 272;
-// 이륙 1행 원샷은 짧게, 공중 루프는 좀 더 여유롭게.
-const CAT_JUMP_LAUNCH_PX_PER_FRAME = 10;
-const CAT_JUMP_AIR_PX_PER_FRAME = 20;
-const CAT_JUMP_LAUNCH_DIST =
-  CAT_JUMP_LAUNCH_FRAMES.length * CAT_JUMP_LAUNCH_PX_PER_FRAME;
+
+interface SpriteSetConfig {
+  runPath: string;
+  runFrames: CatFrame[];
+  runSrcH: number;
+  runPxPerFrame: number;
+  slidePath: string;
+  slideFrames: SlideFrame[];
+  slideSrcH: number;
+  slidePxPerFrame: number;
+  jumpPath: string;
+  // 점프가 단일 프레임인 캐릭터는 launch·air 모두 같은 프레임 하나로 지정.
+  jumpLaunchFrames: CatFrame[];
+  jumpAirFrames: CatFrame[];
+  jumpSrcH: number;
+  jumpLaunchPxPerFrame: number;
+  jumpAirPxPerFrame: number;
+  // 점프 이미지 내부 구멍(눈 등) 채움 처리 필요 여부.
+  jumpFillInternalHoles: boolean;
+}
+
+interface CharacterSpriteSet {
+  runImg: HTMLImageElement;
+  runReady: boolean;
+  runFrames: CatFrame[];
+  runSrcH: number;
+  runPxPerFrame: number;
+  slideImg: HTMLImageElement;
+  slideReady: boolean;
+  slideFrames: SlideFrame[];
+  slideSrcH: number;
+  slidePxPerFrame: number;
+  jumpImg: HTMLImageElement;
+  jumpReady: boolean;
+  jumpDrawSource: CanvasImageSource;
+  jumpLaunchFrames: CatFrame[];
+  jumpAirFrames: CatFrame[];
+  jumpSrcH: number;
+  jumpLaunchPxPerFrame: number;
+  jumpAirPxPerFrame: number;
+  jumpLaunchDist: number;
+}
+
+function loadCharacterSpriteSet(cfg: SpriteSetConfig): CharacterSpriteSet {
+  const runImg = new Image();
+  runImg.src = new URL(cfg.runPath, import.meta.url).href;
+  const slideImg = new Image();
+  slideImg.src = new URL(cfg.slidePath, import.meta.url).href;
+  const jumpImg = new Image();
+  jumpImg.src = new URL(cfg.jumpPath, import.meta.url).href;
+  const set: CharacterSpriteSet = {
+    runImg,
+    runReady: false,
+    runFrames: cfg.runFrames,
+    runSrcH: cfg.runSrcH,
+    runPxPerFrame: cfg.runPxPerFrame,
+    slideImg,
+    slideReady: false,
+    slideFrames: cfg.slideFrames,
+    slideSrcH: cfg.slideSrcH,
+    slidePxPerFrame: cfg.slidePxPerFrame,
+    jumpImg,
+    jumpReady: false,
+    jumpDrawSource: jumpImg,
+    jumpLaunchFrames: cfg.jumpLaunchFrames,
+    jumpAirFrames: cfg.jumpAirFrames,
+    jumpSrcH: cfg.jumpSrcH,
+    jumpLaunchPxPerFrame: cfg.jumpLaunchPxPerFrame,
+    jumpAirPxPerFrame: cfg.jumpAirPxPerFrame,
+    jumpLaunchDist: cfg.jumpLaunchFrames.length * cfg.jumpLaunchPxPerFrame,
+  };
+  runImg.onload = () => {
+    set.runReady = true;
+  };
+  slideImg.onload = () => {
+    set.slideReady = true;
+  };
+  jumpImg.onload = () => {
+    if (cfg.jumpFillInternalHoles) set.jumpDrawSource = fillInternalHoles(jumpImg);
+    set.jumpReady = true;
+  };
+  return set;
+}
+
+// --- 황태 (주황 태비, 기본 캐릭터) ---
+// 달리기: 2400×1350, 7행 × 7열 = 49프레임 (프레임별 실측).
+// 슬라이드: 951×262, 하단 6프레임 사용 (상단은 도약/공격 자세).
+// 점프: 1433×2400, 1행 5프레임 이륙 원샷 → 2행 앞 4프레임 공중 루프.
+const HWANGTAE_SPRITES = loadCharacterSpriteSet({
+  runPath: "../../IMG/characters/hwangtae/run.png",
+  runFrames: [
+    { x: 114, w: 109, bot: 126 },
+    { x: 458, w: 108, bot: 127 },
+    { x: 802, w: 108, bot: 127 },
+    { x: 1147, w: 105, bot: 127 },
+    { x: 1491, w: 104, bot: 127 },
+    { x: 1834, w: 104, bot: 127 },
+    { x: 2177, w: 103, bot: 127 },
+    { x: 120, w: 104, bot: 320 },
+    { x: 463, w: 104, bot: 320 },
+    { x: 805, w: 105, bot: 319 },
+    { x: 1146, w: 106, bot: 319 },
+    { x: 1488, w: 107, bot: 319 },
+    { x: 1831, w: 107, bot: 319 },
+    { x: 2175, w: 106, bot: 320 },
+    { x: 120, w: 104, bot: 513 },
+    { x: 464, w: 103, bot: 513 },
+    { x: 807, w: 102, bot: 513 },
+    { x: 1150, w: 102, bot: 513 },
+    { x: 1492, w: 103, bot: 513 },
+    { x: 1834, w: 104, bot: 513 },
+    { x: 2177, w: 104, bot: 513 },
+    { x: 118, w: 106, bot: 705 },
+    { x: 460, w: 106, bot: 704 },
+    { x: 802, w: 107, bot: 705 },
+    { x: 1144, w: 108, bot: 705 },
+    { x: 1487, w: 108, bot: 704 },
+    { x: 1831, w: 107, bot: 706 },
+    { x: 2176, w: 105, bot: 706 },
+    { x: 120, w: 104, bot: 899 },
+    { x: 464, w: 102, bot: 899 },
+    { x: 807, w: 102, bot: 899 },
+    { x: 1149, w: 103, bot: 899 },
+    { x: 1491, w: 104, bot: 899 },
+    { x: 1834, w: 104, bot: 898 },
+    { x: 2176, w: 105, bot: 897 },
+    { x: 117, w: 107, bot: 1090 },
+    { x: 459, w: 107, bot: 1090 },
+    { x: 801, w: 108, bot: 1090 },
+    { x: 1145, w: 107, bot: 1091 },
+    { x: 1489, w: 106, bot: 1092 },
+    { x: 1834, w: 104, bot: 1092 },
+    { x: 2178, w: 103, bot: 1092 },
+    { x: 121, w: 103, bot: 1285 },
+    { x: 464, w: 102, bot: 1285 },
+    { x: 806, w: 103, bot: 1285 },
+    { x: 1148, w: 104, bot: 1284 },
+    { x: 1490, w: 105, bot: 1283 },
+    { x: 1832, w: 106, bot: 1283 },
+    { x: 2173, w: 108, bot: 1283 },
+  ],
+  runSrcH: 76,
+  runPxPerFrame: 8,
+  slidePath: "../../IMG/characters/hwangtae/slide.png",
+  slideFrames: [
+    { x: 9, w: 147, bot: 232 },
+    { x: 166, w: 146, bot: 232 },
+    { x: 323, w: 147, bot: 230 },
+    { x: 481, w: 146, bot: 231 },
+    { x: 639, w: 144, bot: 231 },
+    { x: 796, w: 147, bot: 233 },
+  ],
+  slideSrcH: 55,
+  slidePxPerFrame: 20,
+  jumpPath: "../../IMG/characters/hwangtae/jump.png",
+  jumpLaunchFrames: [
+    { x: 0, w: 274, bot: 317 },
+    { x: 292, w: 262, bot: 337 },
+    { x: 602, w: 228, bot: 343 },
+    { x: 868, w: 245, bot: 342 },
+    { x: 1154, w: 244, bot: 340 },
+  ],
+  jumpAirFrames: [
+    { x: 23, w: 227, bot: 801 },
+    { x: 314, w: 223, bot: 787 },
+    { x: 597, w: 226, bot: 783 },
+    { x: 881, w: 228, bot: 781 },
+  ],
+  jumpSrcH: 272,
+  jumpLaunchPxPerFrame: 10,
+  jumpAirPxPerFrame: 20,
+  jumpFillInternalHoles: true,
+});
+
+// --- 머루 (회색 태비) ---
+// 달리기: 678×368, 5행 × 5열 = 25프레임 (실측).
+// 슬라이드: 951×262, 2행 × 6열 = 12프레임 (실측, 상·하단 모두 슬라이드 자세).
+// 점프: 677×369, 단일 프레임. 이륙·공중 모두 같은 프레임 재사용.
+const MERU_SPRITES = loadCharacterSpriteSet({
+  runPath: "../../IMG/characters/meru/run.png",
+  runFrames: [
+    { x: 21, w: 87, bot: 68 },
+    { x: 159, w: 85, bot: 68 },
+    { x: 286, w: 99, bot: 66 },
+    { x: 418, w: 106, bot: 58 },
+    { x: 556, w: 99, bot: 68 },
+    { x: 15, w: 96, bot: 142 },
+    { x: 154, w: 91, bot: 138 },
+    { x: 295, w: 86, bot: 142 },
+    { x: 421, w: 100, bot: 141 },
+    { x: 553, w: 105, bot: 137 },
+    { x: 13, w: 99, bot: 215 },
+    { x: 150, w: 96, bot: 215 },
+    { x: 290, w: 91, bot: 214 },
+    { x: 431, w: 88, bot: 216 },
+    { x: 556, w: 103, bot: 210 },
+    { x: 11, w: 101, bot: 289 },
+    { x: 150, w: 96, bot: 290 },
+    { x: 286, w: 95, bot: 283 },
+    { x: 430, w: 87, bot: 290 },
+    { x: 559, w: 99, bot: 289 },
+    { x: 11, w: 104, bot: 360 },
+    { x: 150, w: 97, bot: 363 },
+    { x: 286, w: 95, bot: 358 },
+    { x: 429, w: 88, bot: 363 },
+    { x: 558, w: 98, bot: 362 },
+  ],
+  runSrcH: 70,
+  runPxPerFrame: 6, // 25프레임 사이클을 황태(49프레임)와 비슷한 시간으로 유지.
+  slidePath: "../../IMG/characters/meru/slide.png",
+  slideFrames: [
+    { x: 8, w: 141, bot: 125 },
+    { x: 164, w: 143, bot: 125 },
+    { x: 324, w: 144, bot: 125 },
+    { x: 483, w: 143, bot: 126 },
+    { x: 642, w: 145, bot: 126 },
+    { x: 802, w: 141, bot: 125 },
+    { x: 7, w: 143, bot: 242 },
+    { x: 165, w: 142, bot: 242 },
+    { x: 325, w: 142, bot: 241 },
+    { x: 482, w: 143, bot: 242 },
+    { x: 642, w: 143, bot: 242 },
+    { x: 800, w: 143, bot: 242 },
+  ],
+  slideSrcH: 70,
+  slidePxPerFrame: 12, // 12프레임 사이클 유지.
+  jumpPath: "../../IMG/characters/meru/jump.png",
+  jumpLaunchFrames: [{ x: 221, w: 251, bot: 366 }],
+  jumpAirFrames: [{ x: 221, w: 251, bot: 366 }],
+  jumpSrcH: 360,
+  jumpLaunchPxPerFrame: 10,
+  jumpAirPxPerFrame: 20,
+  jumpFillInternalHoles: false,
+});
+
+const CHARACTER_SPRITE_SETS: Record<string, CharacterSpriteSet> = {
+  hwangtae: HWANGTAE_SPRITES,
+  meru: MERU_SPRITES,
+};
+
+// 캐릭터의 스프라이트 세트 조회. spriteId 생략 시 id 그대로 사용.
+function characterSpriteSet(
+  character: CharacterSpec,
+): CharacterSpriteSet | undefined {
+  const key = character.spriteId ?? character.id;
+  return CHARACTER_SPRITE_SETS[key];
+}
 
 // 장애물 스프라이트 — low(웅덩이)·high(화분)·ceiling(샹들리에). platform은 별도.
 // 캔버스 비율은 hitbox 비율과 맞지만 컨텐츠 아래·위 여백이 있어 dy를 밀어 지면 정렬.
@@ -778,7 +910,7 @@ interface ObstacleSpriteMeta {
 }
 function loadObstacleSprite(name: string): HTMLImageElement {
   const img = new Image();
-  img.src = new URL(`../../IMG/${name}.png`, import.meta.url).href;
+  img.src = new URL(`../../IMG/obstacles/${name}.png`, import.meta.url).href;
   return img;
 }
 // 하단 여백 실측값 (tools/analyze_obstacle_sprites.mjs).
@@ -787,23 +919,23 @@ function loadObstacleSprite(name: string): HTMLImageElement {
 // 결과: 웅덩이 위 절반은 지면 위, 아래 절반은 지면 밑으로 잠겨 자연스러움
 // (obstacle이 지면 fillRect 뒤에 그려지므로 지면 덮음 = "레이어 앞").
 const lowObstacleMeta: ObstacleSpriteMeta = {
-  img: loadObstacleSprite("LowObstacle_Puddle"),
+  img: loadObstacleSprite("puddle"),
   bottomMarginRatio: 194 / 388,
 };
 const highObstacleMeta: ObstacleSpriteMeta = {
-  img: loadObstacleSprite("HighObstacle_Pot"),
+  img: loadObstacleSprite("pot"),
   bottomMarginRatio: 41 / 869,
 };
 // 샹들리에는 천장 매달림 — 하단 여백이 걸림 없이 자연스러우니 조정 X.
 const airObstacleMeta: ObstacleSpriteMeta = {
-  img: loadObstacleSprite("AirObstacle_Chandelier"),
+  img: loadObstacleSprite("chandelier"),
   bottomMarginRatio: 0,
 };
 
 // 아이템 스프라이트 — heal·magnet·dash·giant. 로드 실패·기타 effect는 원 fallback.
 function loadItemSprite(name: string): HTMLImageElement {
   const img = new Image();
-  img.src = new URL(`../../IMG/${name}.png`, import.meta.url).href;
+  img.src = new URL(`../../IMG/items/${name}.png`, import.meta.url).href;
   return img;
 }
 // 각 스프라이트별 실제 내용 영역(bbox). 500×500 canvas 안 여백 다름 → 화면상 크기 불균일.
@@ -816,28 +948,28 @@ interface ItemSpriteMeta {
   sh: number;
 }
 const itemSpriteHeal: ItemSpriteMeta = {
-  img: loadItemSprite("Item_Heal"),
+  img: loadItemSprite("heal"),
   sx: 90,
   sy: 90,
   sw: 319,
   sh: 319,
 };
 const itemSpriteMagnet: ItemSpriteMeta = {
-  img: loadItemSprite("Item_Magnet"),
+  img: loadItemSprite("magnet"),
   sx: 60,
   sy: 62,
   sw: 380,
   sh: 378,
 };
 const itemSpriteDash: ItemSpriteMeta = {
-  img: loadItemSprite("Item_Dash"),
+  img: loadItemSprite("dash"),
   sx: 29,
   sy: 26,
   sw: 442,
   sh: 448,
 };
 const itemSpriteGiant: ItemSpriteMeta = {
-  img: loadItemSprite("Item_Gigant"), // 파일명 오타 그대로 사용
+  img: loadItemSprite("giant"),
   sx: 60,
   sy: 62,
   sw: 380,
@@ -966,8 +1098,13 @@ function renderLobbyPanel(bot: Bot) {
   }
 
   const petName = pet?.name ?? "(없음)";
-  const petDetail = pet?.skill
-    ? `스킬: ${pet.skill.id} (쿨 ${pet.skill.cooldown}초)`
+  const petDescLine = pet
+    ? (pet.description ?? (pet.skill ? `스킬: ${pet.skill.id}` : "(효과 없음)"))
+    : "";
+  const petDetail = pet
+    ? pet.skill
+      ? `${petDescLine}\n쿨 ${pet.skill.cooldown}초`
+      : petDescLine
     : "(효과 없음)";
 
   const slots = inventory.botEquipped[bot.index] ?? [];
@@ -1600,6 +1737,7 @@ function renderBot(bot: Bot) {
   );
 
   const r = world.runner;
+  const spriteSet = characterSpriteSet(bot.loadout.character);
   const dashing =
     world.skills.some((s) => s.spec.id === "dash" && s.activeTicks > 0) ||
     r.itemDashTicks > 0;
@@ -1610,28 +1748,63 @@ function renderBot(bot: Bot) {
     bot.dashTrail.push({ totalDistance: r.totalDistance, y: r.y });
     if (bot.dashTrail.length > TRAIL_LENGTH) bot.dashTrail.shift();
     // 잔상은 봇의 현재 스프라이트(달리기/슬라이드)에 맞춰서 흐리게 반복 렌더.
-    const useSpriteTrail =
-      catRunSpriteReady && bot.loadout.character.id === "default";
+    const useSpriteTrail = !!spriteSet && spriteSet.runReady;
     for (let i = 0; i < bot.dashTrail.length; i++) {
       const ghost = bot.dashTrail[i]!;
       const alpha = (0.45 * (i + 1)) / bot.dashTrail.length;
       const offsetX = r.totalDistance - ghost.totalDistance;
       const sx = RUNNER_SCREEN_X - offsetX;
       const sy = GROUND_Y - ghost.y - r.height;
-      if (useSpriteTrail) {
+      if (useSpriteTrail && spriteSet) {
         ctx.globalAlpha = alpha;
-        if (r.sliding && catSlideSpriteReady) {
+        if (r.sliding && spriteSet.slideReady) {
           const sIdx =
-            Math.floor(ghost.totalDistance / CAT_SLIDE_PX_PER_FRAME) %
-            CAT_SLIDE_FRAMES.length;
-          const sf = CAT_SLIDE_FRAMES[sIdx]!;
-          const srcY = sf.bot + 1 - CAT_SLIDE_SRC_H;
+            Math.floor(ghost.totalDistance / spriteSet.slidePxPerFrame) %
+            spriteSet.slideFrames.length;
+          const sf = spriteSet.slideFrames[sIdx]!;
+          const srcY = sf.bot + 1 - spriteSet.slideSrcH;
           ctx.drawImage(
-            catSlideSprite,
+            spriteSet.slideImg,
             sf.x,
             srcY,
             sf.w,
-            CAT_SLIDE_SRC_H,
+            spriteSet.slideSrcH,
+            sx,
+            sy,
+            r.width,
+            r.height,
+          );
+        } else if (
+          !r.onGround &&
+          bot.jumpStartDistance !== null &&
+          spriteSet.jumpReady
+        ) {
+          // 점프 중 대시 — 잔상도 점프 자세로. airDist는 ghost 시점 기준.
+          const airDist = Math.max(
+            0,
+            ghost.totalDistance - bot.jumpStartDistance,
+          );
+          let jf: CatFrame;
+          if (airDist < spriteSet.jumpLaunchDist) {
+            jf =
+              spriteSet.jumpLaunchFrames[
+                Math.floor(airDist / spriteSet.jumpLaunchPxPerFrame)
+              ]!;
+          } else {
+            const airIdx =
+              Math.floor(
+                (airDist - spriteSet.jumpLaunchDist) /
+                  spriteSet.jumpAirPxPerFrame,
+              ) % spriteSet.jumpAirFrames.length;
+            jf = spriteSet.jumpAirFrames[airIdx]!;
+          }
+          const srcY = jf.bot + 1 - spriteSet.jumpSrcH;
+          ctx.drawImage(
+            spriteSet.jumpDrawSource,
+            jf.x,
+            srcY,
+            jf.w,
+            spriteSet.jumpSrcH,
             sx,
             sy,
             r.width,
@@ -1639,16 +1812,16 @@ function renderBot(bot: Bot) {
           );
         } else {
           const fIdx =
-            Math.floor(ghost.totalDistance / CAT_SPRITE_PX_PER_FRAME) %
-            CAT_RUN_FRAMES.length;
-          const rf = CAT_RUN_FRAMES[fIdx]!;
-          const srcY = rf.bot + 1 - CAT_RUN_SRC_H;
+            Math.floor(ghost.totalDistance / spriteSet.runPxPerFrame) %
+            spriteSet.runFrames.length;
+          const rf = spriteSet.runFrames[fIdx]!;
+          const srcY = rf.bot + 1 - spriteSet.runSrcH;
           ctx.drawImage(
-            catRunSprite,
+            spriteSet.runImg,
             rf.x,
             srcY,
             rf.w,
-            CAT_RUN_SRC_H,
+            spriteSet.runSrcH,
             sx,
             sy,
             r.width,
@@ -1682,23 +1855,22 @@ function renderBot(bot: Bot) {
   const giant = r.giantTicks > 0;
   const dx = RUNNER_SCREEN_X;
   const dy = GROUND_Y - r.y - r.height;
-  const useSprite =
-    catRunSpriteReady && bot.loadout.character.id === "default";
+  const useSprite = !!spriteSet && spriteSet.runReady;
 
-  if (useSprite && r.alive && !(invincible && blink)) {
-    if (r.sliding && catSlideSpriteReady) {
-      // 슬라이드 — 하단 행 6프레임 순환. 발끝(bot)이 crop 하단에 오도록 srcY 결정.
+  if (useSprite && spriteSet && r.alive && !(invincible && blink)) {
+    if (r.sliding && spriteSet.slideReady) {
+      // 슬라이드 — 캐릭터별 프레임 세트 순환. 발끝(bot)이 crop 하단에 오도록 srcY 결정.
       const sIdx =
-        Math.floor(r.totalDistance / CAT_SLIDE_PX_PER_FRAME) %
-        CAT_SLIDE_FRAMES.length;
-      const sf = CAT_SLIDE_FRAMES[sIdx]!;
-      const srcY = sf.bot + 1 - CAT_SLIDE_SRC_H;
+        Math.floor(r.totalDistance / spriteSet.slidePxPerFrame) %
+        spriteSet.slideFrames.length;
+      const sf = spriteSet.slideFrames[sIdx]!;
+      const srcY = sf.bot + 1 - spriteSet.slideSrcH;
       ctx.drawImage(
-        catSlideSprite,
+        spriteSet.slideImg,
         sf.x,
         srcY,
         sf.w,
-        CAT_SLIDE_SRC_H,
+        spriteSet.slideSrcH,
         dx,
         dy,
         r.width,
@@ -1707,48 +1879,49 @@ function renderBot(bot: Bot) {
     } else if (
       !r.onGround &&
       bot.jumpStartDistance !== null &&
-      catJumpSpriteReady
+      spriteSet.jumpReady
     ) {
-      // 점프 — 이륙 후 1행 5프레임 원샷 → 2행 앞 4프레임 무한 루프.
+      // 점프 — 이륙 원샷 재생 후 공중 유지 프레임 루프. 캐릭터가 단일 프레임이면
+      // launch·air가 같은 프레임 하나로 세팅되어 있어 자연스럽게 유지됨.
       const airDist = r.totalDistance - bot.jumpStartDistance;
       let jf: CatFrame;
-      if (airDist < CAT_JUMP_LAUNCH_DIST) {
+      if (airDist < spriteSet.jumpLaunchDist) {
         jf =
-          CAT_JUMP_LAUNCH_FRAMES[
-            Math.floor(airDist / CAT_JUMP_LAUNCH_PX_PER_FRAME)
+          spriteSet.jumpLaunchFrames[
+            Math.floor(airDist / spriteSet.jumpLaunchPxPerFrame)
           ]!;
       } else {
         const airIdx =
           Math.floor(
-            (airDist - CAT_JUMP_LAUNCH_DIST) / CAT_JUMP_AIR_PX_PER_FRAME,
-          ) % CAT_JUMP_AIR_FRAMES.length;
-        jf = CAT_JUMP_AIR_FRAMES[airIdx]!;
+            (airDist - spriteSet.jumpLaunchDist) / spriteSet.jumpAirPxPerFrame,
+          ) % spriteSet.jumpAirFrames.length;
+        jf = spriteSet.jumpAirFrames[airIdx]!;
       }
-      const srcY = jf.bot + 1 - CAT_JUMP_SRC_H;
+      const srcY = jf.bot + 1 - spriteSet.jumpSrcH;
       ctx.drawImage(
-        catJumpDrawSource,
+        spriteSet.jumpDrawSource,
         jf.x,
         srcY,
         jf.w,
-        CAT_JUMP_SRC_H,
+        spriteSet.jumpSrcH,
         dx,
         dy,
         r.width,
         r.height,
       );
     } else {
-      // 달리기 — 16프레임 순환. 프레임별 x-range 실측값 사용.
+      // 달리기 — 캐릭터별 프레임 세트 순환.
       const frameIndex =
-        Math.floor(r.totalDistance / CAT_SPRITE_PX_PER_FRAME) %
-        CAT_RUN_FRAMES.length;
-      const rf = CAT_RUN_FRAMES[frameIndex]!;
-      const srcY = rf.bot + 1 - CAT_RUN_SRC_H;
+        Math.floor(r.totalDistance / spriteSet.runPxPerFrame) %
+        spriteSet.runFrames.length;
+      const rf = spriteSet.runFrames[frameIndex]!;
+      const srcY = rf.bot + 1 - spriteSet.runSrcH;
       ctx.drawImage(
-        catRunSprite,
+        spriteSet.runImg,
         rf.x,
         srcY,
         rf.w,
-        CAT_RUN_SRC_H,
+        spriteSet.runSrcH,
         dx,
         dy,
         r.width,

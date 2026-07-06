@@ -19,8 +19,8 @@ export interface InventoryState {
 
 // 봇별 기본 캐릭터/펫 (첫 실행 시) — 사용자가 즉시 변경 가능.
 // 데이터 파일이 없어지면 fallback 처리.
-const DEFAULT_BOT_CHARACTER_IDS = ["default", "coin-walker"];
-const DEFAULT_BOT_PET_IDS = ["firework", "destroyer"];
+const DEFAULT_BOT_CHARACTER_IDS = ["hwangtae", "meru"];
+const DEFAULT_BOT_PET_IDS = ["geumbungeo", "nurungji"];
 
 export const SLOT_COUNT = 3;
 export const INITIAL_BAG_SIZE = 20;

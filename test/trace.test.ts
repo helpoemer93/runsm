@@ -12,10 +12,10 @@ import { decide } from "../src/sim/bot";
 import { CharacterSpec, EquipmentSpec, Loadout, PetSpec } from "../src/sim/spec";
 import { Stage } from "../src/sim/stage";
 
-import defaultChar from "../src/data/characters/default.json";
-import coinWalkerChar from "../src/data/characters/coin-walker.json";
-import destroyerPet from "../src/data/pets/destroyer.json";
-import fireworkPet from "../src/data/pets/firework.json";
+import defaultChar from "../src/data/characters/hwangtae.json";
+import coinWalkerChar from "../src/data/characters/meru.json";
+import destroyerPet from "../src/data/pets/nurungji.json";
+import fireworkPet from "../src/data/pets/geumbungeo.json";
 import shoes from "../src/data/equipment/shoes.json";
 import healTalisman from "../src/data/equipment/heal-talisman.json";
 import coinRing from "../src/data/equipment/coin-ring.json";

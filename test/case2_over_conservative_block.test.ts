@@ -9,8 +9,8 @@ import { decide } from "../src/sim/bot";
 import { CharacterSpec, Loadout, PetSpec } from "../src/sim/spec";
 import { Stage } from "../src/sim/stage";
 
-import defaultChar from "../src/data/characters/default.json";
-import destroyerPet from "../src/data/pets/destroyer.json";
+import defaultChar from "../src/data/characters/hwangtae.json";
+import destroyerPet from "../src/data/pets/nurungji.json";
 
 const stage: Stage = {
   id: "test",

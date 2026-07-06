@@ -21,12 +21,17 @@ export interface CharacterSpec {
   // 생략 시 효과 없음. 트랙 환산이 봇 baseRunSpeed에 비례하므로
   // 단위 시간당 발동 횟수는 봇 속도와 무관(거리 단위로 균등).
   coinPerDistance?: number;
+  // 스프라이트 세트 id. 생략 시 캐릭터 id를 그대로 사용.
+  // 렌더 코드가 이 값을 키로 스프라이트 세트를 조회.
+  spriteId?: string;
 }
 
 export interface PetSpec {
   id: string;
   name: string;
   skill?: SkillSpec;
+  // 로비 UI에서 표시할 자연어 설명. 생략 시 기본 표기(스킬 id) 사용.
+  description?: string;
 }
 
 // 장비는 곱셈 보정치만 우선 지원. 미정의 항목은 1.0(보정 없음)으로 간주.

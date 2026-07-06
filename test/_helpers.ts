@@ -1,7 +1,7 @@
 import { CharacterSpec, Loadout } from "../src/sim/spec";
 import { Stage } from "../src/sim/stage";
 import { createWorld } from "../src/sim/world";
-import defaultCharacterData from "../src/data/characters/default.json";
+import defaultCharacterData from "../src/data/characters/hwangtae.json";
 
 export const DEFAULT_CHARACTER: CharacterSpec = defaultCharacterData as CharacterSpec;
 

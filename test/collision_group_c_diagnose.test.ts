@@ -9,8 +9,8 @@ import { CharacterSpec, EquipmentSpec, Loadout, PetSpec } from "../src/sim/spec"
 import { Stage } from "../src/sim/stage";
 import { Rng } from "../src/sim/rng";
 
-import defaultChar from "../src/data/characters/default.json";
-import destroyerPet from "../src/data/pets/destroyer.json";
+import defaultChar from "../src/data/characters/hwangtae.json";
+import destroyerPet from "../src/data/pets/nurungji.json";
 import shoesSpec from "../src/data/equipment/shoes.json";
 import stage1 from "../src/data/stages/stage1.json";
 import stage2 from "../src/data/stages/stage2.json";

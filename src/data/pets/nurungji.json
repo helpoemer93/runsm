@@ -1,0 +1,10 @@
+{
+  "id": "nurungji",
+  "name": "누룽지",
+  "description": "장애물을 파괴하고 그 자리에 회복 아이템을 생성합니다.",
+  "skill": {
+    "id": "destroyer",
+    "cooldown": 8,
+    "duration": 0.1
+  }
+}

@@ -9,8 +9,8 @@ import { decide } from "../src/sim/bot";
 import { CharacterSpec, EquipmentSpec, Loadout, PetSpec } from "../src/sim/spec";
 import { Stage } from "../src/sim/stage";
 
-import coinWalkerChar from "../src/data/characters/coin-walker.json";
-import destroyerPet from "../src/data/pets/destroyer.json";
+import coinWalkerChar from "../src/data/characters/meru.json";
+import destroyerPet from "../src/data/pets/nurungji.json";
 import shoesSpec from "../src/data/equipment/shoes.json";
 import stage1 from "../src/data/stages/stage1.json";
 import stage2 from "../src/data/stages/stage2.json";
