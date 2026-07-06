@@ -950,6 +950,12 @@ const airObstacleMeta: ObstacleSpriteMeta = {
   img: loadObstacleSprite("chandelier"),
   bottomMarginRatio: 0,
 };
+// 플랫폼(발판) — 서랍장 그림. 상단이 발판 면이라 하단 여백 조정 없음.
+// dresser 이미지(889×280) 비율이 platform 크기(250×80)와 거의 같아 늘려도 왜곡 없음.
+const platformObstacleMeta: ObstacleSpriteMeta = {
+  img: loadObstacleSprite("dresser"),
+  bottomMarginRatio: 0,
+};
 
 // 아이템 스프라이트 — heal·magnet·dash·giant. 로드 실패·기타 effect는 원 fallback.
 function loadItemSprite(name: string): HTMLImageElement {
@@ -1659,11 +1665,16 @@ function drawTrack(
     const yBottom = o.yBottom ?? 0;
     const yTop = yBottom + o.height;
     if (o.kind === "platform") {
-      // 플랫폼 — 머리 위만 진하게(올라타는 면) + 본체는 옅게
-      ctx.fillStyle = "#8b6f47";
-      ctx.fillRect(sx, GROUND_Y - yTop, o.width, 8);
-      ctx.fillStyle = "rgba(139, 111, 71, 0.4)";
-      ctx.fillRect(sx, GROUND_Y - yTop + 8, o.width, o.height - 8);
+      // 플랫폼 — dresser 스프라이트 사용. 로드 전이면 색깔 사각형 fallback.
+      const meta = platformObstacleMeta;
+      if (meta.img.complete && meta.img.naturalWidth > 0) {
+        ctx.drawImage(meta.img, sx, GROUND_Y - yTop, o.width, o.height);
+      } else {
+        ctx.fillStyle = "#8b6f47";
+        ctx.fillRect(sx, GROUND_Y - yTop, o.width, 8);
+        ctx.fillStyle = "rgba(139, 111, 71, 0.4)";
+        ctx.fillRect(sx, GROUND_Y - yTop + 8, o.width, o.height - 8);
+      }
     } else {
       // 지면 obstacle은 h=30(웅덩이) / h=150(화분), 천장 obstacle은 yBottom>0(샹들리에).
       // 스프라이트 로드 완료 시 사용, 아니면 색깔 사각형 fallback.
