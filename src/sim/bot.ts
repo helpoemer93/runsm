@@ -45,6 +45,35 @@ function visibleObstacles(world: World): Obstacle[] {
   return result;
 }
 
+// 회피점프·구멍 회피 발동 직전 지연 판정.
+// 봇 앞 (botFrontX, targetX - minReserve] 사이에 지면 아이템이 있으면 true —
+// 회피를 몇 tick 미루면 봇이 걸어가 자연 수집 가능하고, 그 시점에도 targetX까지
+// minReserve만큼 여유가 남아 회피 재발동에 지장 없음.
+// 지면 아이템 = y ≤ baseHeight (봇이 지면 상태로 몸통 사각형에 걸리는 y 범위).
+function hasGroundItemBefore(
+  world: World,
+  botFrontX: number,
+  targetX: number,
+  minReserve: number,
+): boolean {
+  const scanRight = targetX - minReserve;
+  if (scanRight <= botFrontX) return false;
+  const baseH = world.runner.baseHeight;
+  const isGroundY = (y: number) => y >= 0 && y <= baseH;
+  for (let i = 0; i < world.currentTrack.items.length; i++) {
+    if (world.currentItemCollected[i]) continue;
+    const it = world.currentTrack.items[i]!;
+    if (!isGroundY(it.y)) continue;
+    if (it.x > botFrontX && it.x <= scanRight) return true;
+  }
+  for (const sp of world.spawnedItems) {
+    if (sp.collected) continue;
+    if (!isGroundY(sp.y)) continue;
+    if (sp.x > botFrontX && sp.x <= scanRight) return true;
+  }
+  return false;
+}
+
 function visiblePits(world: World): Pit[] {
   const cur = world.currentTrack.pits ?? [];
   const next = world.nextTrack.pits ?? [];
@@ -560,6 +589,13 @@ export function decide(world: World): Input {
           //   (원 fix #12는 hp>40 시 arc catch 이득 위해 감수했으나, heal이 10 hp라 순 손해.
           //   seed 1843602865 stage3-slides tick 430 케이스로 확인.)
           if (!nextObstacleTooClose) {
+            // 봇 앞 [현재 위치, o.x - min] 사이 지면 아이템 있으면 회피점프 지연 —
+            // 봇이 걸어가 자연 수집 후에도 회피 발동 여유(min) 남음.
+            // 패턴 1(구멍 회피 지면)·패턴 4(회피점프)에서 발견한 놓친 수집 사례 대응.
+            const botFrontX = r.x + r.baseWidth;
+            if (hasGroundItemBefore(world, botFrontX, o.x, min)) {
+              continue;
+            }
             return { jump: true, slide: false, debugReason: "회피점프" };
           }
         }
@@ -860,6 +896,12 @@ export function decide(world: World): Input {
             }
           }
           if (landsInAnotherPit) continue; // 다음 pit 위 착지 위험 → 이 pit 회피 skip
+          // 봇 앞 [현재 위치, pit.x - pitSafetyMargin] 사이 지면 아이템 있으면 지연 —
+          // 봇이 걸어가 자연 수집 후 pit 앞 도착 시 재발동. 패턴 1(구멍 회피 지면) 대응.
+          const botFrontX = r.x + r.baseWidth;
+          if (hasGroundItemBefore(world, botFrontX, pit.x, pitSafetyMargin)) {
+            continue;
+          }
           return { jump: true, slide: false, debugReason: "구멍 회피 지면" };
         }
       }
@@ -1505,16 +1547,18 @@ export function decide(world: World): Input {
         }
         return false;
       };
-      // 상승 중 보충 대상은 부작용 적은 고가 아이템만:
-      // v=20+ 코인 / heal / magnet. dash·giant는 immune state cascade로
+      // 상승 중 보충 대상: 부작용 적은 아이템.
+      // v≥5 코인 / heal / magnet. dash·giant는 immune state cascade로
       // protectGround 범위 확장 → 다른 catch 손해 (케이스: seed 158120043 dash spawn).
+      // v=5 코인 포함 이유: 패턴 3(비행중 장애물 차단 근처 위 코인 놓침, 격차 ~10) 대응.
+      // singleSumPri vs doubleSumPri 비교 필터가 남아 있어 이단점프 후 손해면 자연 skip.
       const isValuableAir = (item: {
         value?: number;
         effect?: import("./stage").ItemEffect;
       }): boolean => {
         if (item.effect === "dash" || item.effect === "giant") return false;
         if (item.effect) return true;
-        return (item.value ?? 1) >= 20;
+        return (item.value ?? 1) >= 5;
       };
       let singleSumPri = 0;
       let doubleSumPri = 0;
