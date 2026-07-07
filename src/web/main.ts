@@ -881,7 +881,7 @@ const MERU_SPRITES = loadCharacterSpriteSet("meru", {
     { x: 558, w: 98, bot: 362 },
   ],
   runSrcH: 70,
-  runPxPerFrame: 6, // 25프레임 사이클을 황태(49프레임)와 비슷한 시간으로 유지.
+  runPxPerFrame: 24, // 25프레임 사이클 체감 속도. 6→12→24 순으로 늦춤.
   slideFrames: [
     { x: 8, w: 141, bot: 125 },
     { x: 164, w: 143, bot: 125 },
