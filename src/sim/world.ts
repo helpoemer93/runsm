@@ -326,11 +326,15 @@ function generateRandomTrack(
   }
   if (totalW === 0) return { obstacles: [], pits: [] };
 
-  const xMin = TRACK_SAFE_PREFIX;
+  const base = cfg.minGap ?? OBSTACLE_MIN_GAP_DEFAULT;
+  // 안전 prefix도 봇 속도(스케일된 minGap)에 비례 확장 —
+  // 그러지 않으면 극단 세팅(예: 신발×3 lv30, effSpeed 823px/s)에서 첫 obstacle이
+  // 봇의 avoidHighMin(≈220px) 미달 지점에 배치돼 봇이 회피 트리거 zone 진입 못 하고
+  // 옆면 충돌 30 데미지(에러리포트 2건). base/OBSTACLE_MIN_GAP_DEFAULT로 speedRatio 유도.
+  const safePrefixScale = base / OBSTACLE_MIN_GAP_DEFAULT;
+  const xMin = TRACK_SAFE_PREFIX * safePrefixScale;
   const xMax = track.length - RANDOM_DROP_END_BUFFER;
   if (xMax <= xMin) return { obstacles: [], pits: [] };
-
-  const base = cfg.minGap ?? OBSTACLE_MIN_GAP_DEFAULT;
   const pitMinW = cfg.pitMinWidth ?? 80;
   const pitMaxW = cfg.pitMaxWidth ?? 130;
 

@@ -1,6 +1,7 @@
 import { World, Input, isObstacleImmune, TICK_DURATION } from "./world";
 import { Item, ItemEffect, Obstacle, Pit } from "./stage";
 import { aggregateSkillModifiers } from "./skill";
+import { bestDoubleJumpTiming } from "./scorer";
 
 // 회피점프를 skip해야 하는 "지속 효과 면역"만 추림.
 // invincibleTicks(잔여 무적·충돌 무적)는 곧 끝나므로 점프는 활성화 — 끝난 시점에
@@ -589,11 +590,15 @@ export function decide(world: World): Input {
           //   (원 fix #12는 hp>40 시 arc catch 이득 위해 감수했으나, heal이 10 hp라 순 손해.
           //   seed 1843602865 stage3-slides tick 430 케이스로 확인.)
           if (!nextObstacleTooClose) {
-            // 봇 앞 [현재 위치, o.x - min] 사이 지면 아이템 있으면 회피점프 지연 —
-            // 봇이 걸어가 자연 수집 후에도 회피 발동 여유(min) 남음.
+            // 봇 앞 [현재 위치, o.x - minReserve] 사이 지면 아이템 있으면 회피점프 지연 —
+            // 봇이 걸어가 자연 수집 후에도 회피 발동 여유(min + 2 tick 이동거리) 남음.
+            // 2 tick 여유: 매 tick 봇 이동 = effSpeed * dt. 지연 후 발동 판정 tick과
+            // 실제 아이템 수집 tick 사이 gap 감소로 min 미달 되지 않도록 여유 확보.
+            // 극단 세팅(+100)에서 46.3 px/tick라 이 여유 없으면 지연 chain이 회피 zone 놓침.
             // 패턴 1(구멍 회피 지면)·패턴 4(회피점프)에서 발견한 놓친 수집 사례 대응.
             const botFrontX = r.x + r.baseWidth;
-            if (hasGroundItemBefore(world, botFrontX, o.x, min)) {
+            const minReserve = min + 2 * effSpeed * TICK_DURATION;
+            if (hasGroundItemBefore(world, botFrontX, o.x, minReserve)) {
               continue;
             }
             return { jump: true, slide: false, debugReason: "회피점프" };
@@ -896,10 +901,12 @@ export function decide(world: World): Input {
             }
           }
           if (landsInAnotherPit) continue; // 다음 pit 위 착지 위험 → 이 pit 회피 skip
-          // 봇 앞 [현재 위치, pit.x - pitSafetyMargin] 사이 지면 아이템 있으면 지연 —
+          // 봇 앞 [현재 위치, pit.x - reserve] 사이 지면 아이템 있으면 지연 —
+          // reserve = pitSafetyMargin + 2 tick 이동거리(회피점프 지연과 동일 이유).
           // 봇이 걸어가 자연 수집 후 pit 앞 도착 시 재발동. 패턴 1(구멍 회피 지면) 대응.
           const botFrontX = r.x + r.baseWidth;
-          if (hasGroundItemBefore(world, botFrontX, pit.x, pitSafetyMargin)) {
+          const pitReserve = pitSafetyMargin + 2 * effSpeed * TICK_DURATION;
+          if (hasGroundItemBefore(world, botFrontX, pit.x, pitReserve)) {
             continue;
           }
           return { jump: true, slide: false, debugReason: "구멍 회피 지면" };
@@ -1293,6 +1300,18 @@ export function decide(world: World): Input {
           const landingRight = landingLeft + r.baseWidth;
           for (const pit of visiblePitList) {
             if (landingRight > pit.x && landingLeft < pit.x + pit.width) {
+              // 적응형 이단점프 타이밍 — pit 검출 상황에서만 override.
+              // 스코어러가 nop/airjump@k/aircombo 후보 시뮬 후 최고점 선택.
+              // sim에서 착지 후 자연 회피 가능한 obstacle 충돌은 무시 (봇 실제 판단 반영).
+              if (!lastingImmuneAir) {
+                const timing = bestDoubleJumpTiming(world, effSpeed);
+                if (timing.fire) {
+                  return { jump: true, slide: false, debugReason: "이단점프 (적응형 pit)" };
+                }
+                if (!timing.noJump) {
+                  return { jump: false, slide: false, debugReason: "이단점프 대기 (적응형 pit)" };
+                }
+              }
               // 이단점프해도 여전히 pit 안 착지(margin 0)면 발동 무효 — 사실상 낙사 확정.
               // 자연 낙하가 이미 pit 안 확정 상태이므로 safety margin 무시(useMargin=false).
               // 아슬아슬해도 이단점프로 pit 밖 착지 가능성이 있으면 발동이 이득.
