@@ -1539,16 +1539,23 @@ export function decide(world: World): Input {
       }
     }
 
-    // 이단점프 — 상승 중(vy>0) 보충 수집. 단점프 trajectory 가치 vs 이단점프 trajectory 가치
-    // 비교 후 후자가 클 때만 발동. canCatch는 이산 step별 y로 정밀 검사 (연속 적분은
-    // borderline 케이스 오판). 발동 후 obstacle 충돌 가능하면 차단.
+    // 이단점프 — 상승 중(vy>0) 보충 수집. 지연 timing 후보 [0,5,10,15,20] 각각 물리 공식으로
+    // 계산해서 어느 timing에 이단점프 발동하면 아이템 총 가치 최대인지 선택.
+    // 지금(0) 최고면 발동, 지연 최고면 대기 (다음 tick 재판정으로 delay 자연 감소 → 발동 도달).
+    // 발동 안 함 (r.vy로 계속 진행)이 최고면 다음 분기로.
     // 케이스: seed 158120043 (1183.5, 80) 단점프 catch 후 (1215.5, 180) v=20 보충.
+    // 케이스: seed 57868 t165 봇 vy=640 상승 조기 발동 → 콤보 정점 낮음 개선 목표.
     if (r.vy > 0 && !lastingImmuneAir) {
       const advancePerStep = effSpeed * TICK_DURATION;
       const dt = TICK_DURATION;
-      // step-by-step 시뮬과 동일한 FP 누적으로 canCatch (분석식은 borderline 0.00002 차이로
-      // 시뮬과 어긋남 — y=129.99998 vs 130).
-      const canCatch = (vyInit: number, itemX: number, itemY: number): boolean => {
+      const DELAY_CANDIDATES = [0, 5, 10, 15, 20];
+      // 지연 tick 후 이단점프 발동 시 아이템 잡히나 (step-by-step 이산 시뮬).
+      // 지연 동안 봇 자연 상승/하강 계속, 지연 시점에 vy 재설정.
+      const canCatchWithDelay = (
+        delayTicks: number,
+        itemX: number,
+        itemY: number,
+      ): boolean => {
         if (advancePerStep <= 0) return false;
         const mStart = Math.max(
           1,
@@ -1557,8 +1564,9 @@ export function decide(world: World): Input {
         const mEnd = Math.floor((itemX - r.x) / advancePerStep);
         if (mEnd < mStart) return false;
         let y = r.y;
-        let vy = vyInit;
+        let vy = r.vy;
         for (let m = 1; m <= mEnd; m++) {
+          if (m === delayTicks + 1) vy = r.jumpVelocity; // 지연 시점 이단점프 발동
           vy -= GRAVITY_ABS * dt;
           y += vy * dt;
           if (y < 0) return false; // 착지
@@ -1566,11 +1574,28 @@ export function decide(world: World): Input {
         }
         return false;
       };
+      // 이단점프 안 함 (r.vy로 계속 진행) 시 잡히나 = 기존 singleSumPri.
+      const canCatchNoJump = (itemX: number, itemY: number): boolean => {
+        if (advancePerStep <= 0) return false;
+        const mStart = Math.max(
+          1,
+          Math.ceil((itemX - r.baseWidth - r.x) / advancePerStep),
+        );
+        const mEnd = Math.floor((itemX - r.x) / advancePerStep);
+        if (mEnd < mStart) return false;
+        let y = r.y;
+        let vy = r.vy;
+        for (let m = 1; m <= mEnd; m++) {
+          vy -= GRAVITY_ABS * dt;
+          y += vy * dt;
+          if (y < 0) return false;
+          if (m >= mStart && itemY >= y && itemY <= y + r.baseHeight) return true;
+        }
+        return false;
+      };
       // 상승 중 보충 대상: 부작용 적은 아이템.
       // v≥5 코인 / heal / magnet. dash·giant는 immune state cascade로
       // protectGround 범위 확장 → 다른 catch 손해 (케이스: seed 158120043 dash spawn).
-      // v=5 코인 포함 이유: 패턴 3(비행중 장애물 차단 근처 위 코인 놓침, 격차 ~10) 대응.
-      // singleSumPri vs doubleSumPri 비교 필터가 남아 있어 이단점프 후 손해면 자연 skip.
       const isValuableAir = (item: {
         value?: number;
         effect?: import("./stage").ItemEffect;
@@ -1579,30 +1604,49 @@ export function decide(world: World): Input {
         if (item.effect) return true;
         return (item.value ?? 1) >= 5;
       };
-      let singleSumPri = 0;
-      let doubleSumPri = 0;
+      let noJumpSumPri = 0;
+      const delayedSumPri = new Array<number>(DELAY_CANDIDATES.length).fill(0);
       for (let i = 0; i < world.currentTrack.items.length; i++) {
         if (world.currentItemCollected[i]) continue;
         const item = world.currentTrack.items[i]!;
         if (!isValuableAir(item)) continue;
         if (item.x <= r.x) continue;
         const pri = itemPriority(item);
-        if (canCatch(r.vy, item.x, item.y)) singleSumPri += pri;
-        if (canCatch(r.jumpVelocity, item.x, item.y)) doubleSumPri += pri;
+        if (canCatchNoJump(item.x, item.y)) noJumpSumPri += pri;
+        for (let k = 0; k < DELAY_CANDIDATES.length; k++) {
+          if (canCatchWithDelay(DELAY_CANDIDATES[k]!, item.x, item.y)) {
+            delayedSumPri[k]! += pri;
+          }
+        }
       }
       for (const sp of world.spawnedItems) {
         if (sp.collected) continue;
         if (!isValuableAir(sp)) continue;
         if (sp.x <= r.x) continue;
         const pri = itemPriority(sp);
-        if (canCatch(r.vy, sp.x, sp.y)) singleSumPri += pri;
-        if (canCatch(r.jumpVelocity, sp.x, sp.y)) doubleSumPri += pri;
+        if (canCatchNoJump(sp.x, sp.y)) noJumpSumPri += pri;
+        for (let k = 0; k < DELAY_CANDIDATES.length; k++) {
+          if (canCatchWithDelay(DELAY_CANDIDATES[k]!, sp.x, sp.y)) {
+            delayedSumPri[k]! += pri;
+          }
+        }
       }
-      // 이단점프 trajectory 가치가 더 크지 않으면 보충 X (단점프 계속 손해).
-      if (doubleSumPri > singleSumPri) {
-        // 이단점프 후 ground 도달 위치/비행 범위 안 obstacle 충돌 안전 검사 —
-        // 점프 후 obstacle 위로 떨어지면 충돌. 장애물 높이별 trigger min 차등으로
-        // 보수성 줄임 (low obstacle은 봇 ground 도달 후 단점프 trigger 가능 거리 작음).
+      // 지연 후보 중 최고점 선택 (tie 시 이른 timing 우선 — bestK 초기값 0 유지)
+      let bestK = 0;
+      let bestScore = delayedSumPri[0]!;
+      for (let k = 1; k < DELAY_CANDIDATES.length; k++) {
+        if (delayedSumPri[k]! > bestScore) {
+          bestScore = delayedSumPri[k]!;
+          bestK = k;
+        }
+      }
+      // 이단점프 최고점이 발동 안 함보다 확실히 유리해야 이단점프 시나리오 채택.
+      if (bestScore > noJumpSumPri) {
+        // 최고점 timing이 지연이면 대기 (다음 tick 재판정으로 delayTicks 자연 감소 → 발동).
+        if (DELAY_CANDIDATES[bestK]! > 0) {
+          return { jump: false, slide: false, debugReason: "비행중 상승 수집 대기" };
+        }
+        // 최고점 timing = 0 → 지금 발동. 이단점프 후 obstacle/pit 안전 검사.
         const apexAfter = r.y + (r.jumpVelocity * r.jumpVelocity) / (2 * GRAVITY_ABS);
         const totalAirAfter =
           r.jumpVelocity / GRAVITY_ABS + Math.sqrt((2 * apexAfter) / GRAVITY_ABS);
