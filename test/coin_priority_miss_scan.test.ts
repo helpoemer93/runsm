@@ -25,7 +25,7 @@ const SEED_START = 42;
 const SEED_COUNT = 200;
 const MAX_LAPS = 2;
 const MAX_TICKS = 40000;
-const NEARBY_X = 300; // 놓친 보라와 잡은 주황이 근처로 간주할 x 거리
+const NEARBY_X = 100; // 놓친 보라와 잡은 주황이 근처로 간주할 x 거리
 const TOP_K = 15;
 
 const trackPool: Stage[] = [
@@ -86,6 +86,7 @@ function scanSeed(seed: number, loadout: Loadout, label: string): MissCase[] {
   const caughtOranges: CoinEvent[] = [];
   const missedPurples: CoinEvent[] = [];
   const passedSpawn = new Set<object>();
+  const passedStatic = new Set<object>(); // 정적 아이템 참조 tracking
   let ticks = 0;
 
   while (w.runner.alive && w.runner.lap < MAX_LAPS && ticks < MAX_TICKS) {
@@ -93,6 +94,10 @@ function scanSeed(seed: number, loadout: Loadout, label: string): MissCase[] {
     const reason = input.debugReason ?? "";
     const prevSpawnedCollected = w.spawnedItems.map((sp) => sp.collected);
     const prevSpawnedRefs = w.spawnedItems.slice();
+    // 정적 아이템 이전 상태 저장 (트랙 wrap 시 배열 재할당 대비 참조 slice)
+    const prevStaticItems = w.currentTrack.items.slice();
+    const prevStaticCollected = w.currentItemCollected.slice();
+    const prevTrackId = w.currentTrack.id;
     step(w, input);
     ticks++;
 
@@ -124,6 +129,33 @@ function scanSeed(seed: number, loadout: Loadout, label: string): MissCase[] {
       }
     }
 
+    // 이 tick에 새로 잡힌 정적 코인 감지 (주황).
+    // 트랙 wrap 없을 때만 currentItemCollected 배열 비교 유효.
+    if (prevTrackId === trackId) {
+      for (let j = 0; j < prevStaticItems.length; j++) {
+        const it = prevStaticItems[j]!;
+        const wasCollected = prevStaticCollected[j] ?? false;
+        const nowCollected = w.currentItemCollected[j] ?? false;
+        if (!wasCollected && nowCollected) {
+          if (it.effect) continue;
+          const v = it.value ?? 1;
+          if (v >= 5 && v < 20) {
+            caughtOranges.push({
+              tick: w.tick,
+              botX: r.x,
+              botY: r.y,
+              itemX: it.x,
+              itemY: it.y,
+              value: v,
+              reason,
+              trackId: prevTrackId,
+              lap,
+            });
+          }
+        }
+      }
+    }
+
     // 봇이 지나쳐 미수집으로 확정된 spawn 코인 (놓친 보라)
     for (const sp of w.spawnedItems) {
       if (sp.collected) continue;
@@ -144,6 +176,58 @@ function scanSeed(seed: number, loadout: Loadout, label: string): MissCase[] {
           trackId,
           lap,
         });
+      }
+    }
+
+    // 봇이 지나쳐 미수집으로 확정된 정적 코인 (놓친 보라).
+    // 트랙 wrap 시엔 이전 트랙 아이템 참조 기준으로 검사.
+    const staticItemsToCheck = w.currentTrack.items;
+    const staticCollectedToCheck = w.currentItemCollected;
+    const staticTrackId = trackId;
+    for (let j = 0; j < staticItemsToCheck.length; j++) {
+      const it = staticItemsToCheck[j]!;
+      if (staticCollectedToCheck[j]) continue;
+      if (r.x <= it.x + 50) continue; // 아직 안 지남 (같은 트랙 안)
+      if (passedStatic.has(it)) continue;
+      passedStatic.add(it);
+      if (it.effect) continue;
+      const v = it.value ?? 1;
+      if (v >= 20) {
+        missedPurples.push({
+          tick: w.tick,
+          botX: r.x,
+          botY: r.y,
+          itemX: it.x,
+          itemY: it.y,
+          value: v,
+          reason,
+          trackId: staticTrackId,
+          lap,
+        });
+      }
+    }
+    // 트랙 wrap 시 이전 트랙 정적 아이템 last-chance 검사 (지금 트랙 진입 = 이전 트랙 통과 확정)
+    if (prevTrackId !== trackId) {
+      for (let j = 0; j < prevStaticItems.length; j++) {
+        const it = prevStaticItems[j]!;
+        if (prevStaticCollected[j]) continue;
+        if (passedStatic.has(it)) continue;
+        passedStatic.add(it);
+        if (it.effect) continue;
+        const v = it.value ?? 1;
+        if (v >= 20) {
+          missedPurples.push({
+            tick: w.tick,
+            botX: r.x,
+            botY: r.y,
+            itemX: it.x,
+            itemY: it.y,
+            value: v,
+            reason,
+            trackId: prevTrackId,
+            lap,
+          });
+        }
       }
     }
   }
