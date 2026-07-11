@@ -561,6 +561,25 @@ export function decide(world: World): Input {
     // 봇 plate 위 상태 (r.onGround 이 분기 진입 조건에서 이미 true)
     const onPlatform = r.y > 0;
 
+    // 봇 단점프 시작 후 정점에서 이단점프 보충하면 high obstacle 위 통과 가능한지 시뮬.
+    // 봇 박스 [봇.y, 봇.y+baseHeight] vs obstacle [0, o.height] — 봇.y >= o.height면 통과.
+    // 회피점프 nextObstacleTooClose 검사와 blocking check 두 곳에서 사용.
+    const canDoubleJumpClear = (oX: number, oWidth: number, oHeight: number): boolean => {
+      const tPeak = r.jumpVelocity / GRAVITY_ABS;
+      const tEnter = (oX - r.baseWidth - r.x) / effSpeed;
+      const tExit = (oX + oWidth - r.x) / effSpeed;
+      if (tEnter < tPeak) return false; // 봇 정점 후 obstacle 진입이어야 보충 의미
+      const yPeak = (r.jumpVelocity * r.jumpVelocity) / (2 * GRAVITY_ABS);
+      const yAfterDj = (t: number): number => {
+        const tau = t - tPeak;
+        return (
+          yPeak + r.jumpVelocity * tau - 0.5 * GRAVITY_ABS * tau * tau
+        );
+      };
+      // obstacle 통과 시작/끝 모두 봇.y >= o.height면 안전 (그 사이는 새 정점이라 더 높음)
+      return yAfterDj(tEnter) >= oHeight && yAfterDj(tExit) >= oHeight;
+    };
+
     if (!lastingImmune) {
       for (let i = 0; i < visibleObs.length; i++) {
         const o = visibleObs[i]!;
@@ -604,7 +623,17 @@ export function decide(world: World): Input {
             if (nextGap <= 0) continue;
             const nextIsHigh = nextO.height > highHeightLimit;
             const nextMin = nextIsHigh ? avoidHighMin : avoidLowMin;
-            if (nextGap < nextMin) nextObstacleTooClose = true;
+            if (nextGap < nextMin) {
+              // 봇 회피점프 정점에서 이단점프 발동 시 새 flight arc가 다음 obstacle 통과
+              //   가능하면 skip 안 함 — 봇 실제 정점에서 "정점 보충" 로직으로 이단점프 발동.
+              // 케이스: BugReport #3 시드 1424073679 t=55 첫 obstacle x=899 h=30 회피 시
+              //   착지 x=1316, 다음 obstacle x=1553 h=150. nextGap 207 < avoidHighMin 219
+              //   → 원 로직 skip. 하지만 봇 정점 이단점프 시 새 flight가 (1553, 150) 통과 가능.
+              //   신발×3 lv30 등 극단 세팅에서 avoidHighMin 크게 확장되어 자주 발동.
+              if (!canDoubleJumpClear(nextO.x, nextO.width, nextO.height)) {
+                nextObstacleTooClose = true;
+              }
+            }
             break; // 가장 가까운 다음 obstacle만 검사
           }
           // nextObstacleTooClose면 회피점프 skip. 회피 발동해도 착지 후 다음 obstacle 옆면
@@ -1257,24 +1286,6 @@ export function decide(world: World): Input {
     //     발동할 거리 부족이면 충돌. 거리는 obstacle 높이별로 분기 — low는 단점프 회피,
     //     high는 단점프+이단점프 회피로 trigger 범위가 다름. 봇이 ground 도달 직후
     //     trigger MAX 안에 들어와야 즉시 발동 가능하므로 MAX 거리만큼 여유 확보.
-    // 봇 단점프 시작 후 정점에서 이단점프 보충하면 high ground obstacle 위 통과 가능한지 시뮬.
-    // 봇 박스 [봇.y, 봇.y+baseHeight] vs obstacle [0, o.height] — 봇.y >= o.height면 통과.
-    const canDoubleJumpClear = (oX: number, oWidth: number, oHeight: number): boolean => {
-      const tPeak = r.jumpVelocity / GRAVITY_ABS;
-      const tEnter = (oX - r.baseWidth - r.x) / effSpeed;
-      const tExit = (oX + oWidth - r.x) / effSpeed;
-      if (tEnter < tPeak) return false; // 봇 정점 후 obstacle 진입이어야 보충 의미
-      const yPeak = (r.jumpVelocity * r.jumpVelocity) / (2 * GRAVITY_ABS);
-      const yAfterDj = (t: number): number => {
-        const tau = t - tPeak;
-        return (
-          yPeak + r.jumpVelocity * tau - 0.5 * GRAVITY_ABS * tau * tau
-        );
-      };
-      // obstacle 통과 시작/끝 모두 봇.y >= o.height면 안전 (그 사이는 새 정점이라 더 높음)
-      return yAfterDj(tEnter) >= oHeight && yAfterDj(tExit) >= oHeight;
-    };
-
     let blockingObstacleAhead = false;
     if (!lastingImmune) {
       for (let i = 0; i < visibleObs.length; i++) {
