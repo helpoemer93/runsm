@@ -967,13 +967,18 @@ export function decide(world: World): Input {
     // 지면 봇(r.y=0)이면 몸통 [0,jbH] 이하가 자연 수집 범위. 거대화 시 jbH=100.
     // gap 상한만 jumpTriggerMax로 제한. 하한은 canCatchGround로 판정 — 거대화·높은
     // item 등은 gap 작아도 rise arc 조기 catch 가능.
+    // catch trigger 상한 확장 — jumpTriggerMax + 여유. 봇이 trigger MAX 딱 넘겨서 catch 놓치는
+    // 케이스 (gap 70~80 사이 catchable) 커버. blocking check가 뒤에서 안전 판정하므로 여유 확장 안전.
+    // 시드 659280729 t=309 x=1545 item(1619,120) gap=74 케이스: 이 확장 없으면 catch 놓침 →
+    // 봇이 다음 tick trigger 진입해도 blocking으로 skip → 결국 미수집.
+    const jumpTriggerCatchExt = jumpTriggerMax + 10;
     for (let i = 0; i < world.currentTrack.items.length; i++) {
       if (world.currentItemCollected[i]) continue;
       const item = world.currentTrack.items[i]!;
       if (item.y <= r.y + jbH) continue;
       if (item.y > singleJumpReach) continue;
       const gap = item.x - r.x;
-      if (gap <= 0 || gap > jumpTriggerMax) continue;
+      if (gap <= 0 || gap > jumpTriggerCatchExt) continue;
       if (!canCatchGround(item.x, item.y)) continue;
       const pri = itemPriority(item);
       if (pri > catchableNowPri) catchableNowPri = pri;
@@ -983,7 +988,7 @@ export function decide(world: World): Input {
       if (sp.y <= r.y + jbH) continue;
       if (sp.y > singleJumpReach) continue;
       const gap = sp.x - r.x;
-      if (gap <= 0 || gap > jumpTriggerMax) continue;
+      if (gap <= 0 || gap > jumpTriggerCatchExt) continue;
       if (!canCatchGround(sp.x, sp.y)) continue;
       const pri = itemPriority(sp);
       if (pri > catchableNowPri) catchableNowPri = pri;
@@ -1131,6 +1136,88 @@ export function decide(world: World): Input {
         return { jump: false, slide: false, debugReason: "큰코인 대기" };
       }
       // skip → 흐름 계속 (catch-jump 등 하위 분기로)
+    }
+
+    // catch 결정 궤도 시뮬 스코어링 (갑안) — catch vs skip 각 시나리오 짧게 시뮬해서
+    // 잡을 아이템 pri 합 비교. catch가 궤도로 지나쳐 놓칠 지면 큰 아이템이 skip보다
+    // 큰 이득이면 대기. 봇 매 tick 결정은 그대로 유지, 이 스코어링은 catch 후보 있을 때만.
+    // 사용자 케이스 (황태+금붕어+코인반지×3 시드 1887212460 t≈1131): 봇 x=3050에서
+    //   catch (3079,80) v=5 이후 궤도 확장 → (3268,0) v=20 놓침. skip이 순이득 +15.
+    if (catchableNowPri > 0 && r.onGround && !lastingImmune) {
+      const SIM_TICKS = 60; // 봇 이단점프 flight ~ 41틱 + 여유
+      const g = GRAVITY_ABS;
+      const bH = r.baseHeight;
+      const bW = r.baseWidth;
+      // 시뮬 안 아이템 잡음 여부 판정 — 봇 몸통과 겹침 (magnet·거대화 반영 X, 근사).
+      const simScore = (doJump: boolean): number => {
+        let x = r.x;
+        let y = r.y;
+        let vy = r.vy;
+        let jL = r.jumpsLeft;
+        let onG = r.onGround;
+        if (doJump && jL > 0) {
+          vy = r.jumpVelocity;
+          jL--;
+          onG = false;
+        }
+        let pri = 0;
+        const collectedStatic = new Set<number>();
+        const collectedSpawn = new Set<number>();
+        let landedAfterJump = false;
+        for (let step = 0; step < SIM_TICKS; step++) {
+          vy += -g * TICK_DURATION; // GRAVITY_ABS는 절댓값
+          x += effSpeed * TICK_DURATION;
+          y += vy * TICK_DURATION;
+          if (y <= 0) {
+            y = 0;
+            vy = 0;
+            onG = true;
+            if (doJump) landedAfterJump = true;
+          }
+          // catch 시나리오에서 착지 후는 카운트 안 함 — 실제 봇이 이 시점에 이단점프
+          // ("비행중 상승 수집") 발동할 위험이 있어 궤도 확장. 착지 예측 낙관적일 수 있음.
+          if (doJump && landedAfterJump) break;
+          // 정적 아이템 잡음 판정
+          for (let i = 0; i < world.currentTrack.items.length; i++) {
+            if (world.currentItemCollected[i]) continue;
+            if (collectedStatic.has(i)) continue;
+            const it = world.currentTrack.items[i]!;
+            if (
+              it.x >= x &&
+              it.x <= x + bW &&
+              it.y >= y &&
+              it.y <= y + bH
+            ) {
+              pri += itemPriority(it);
+              collectedStatic.add(i);
+            }
+          }
+          for (let j = 0; j < world.spawnedItems.length; j++) {
+            const sp = world.spawnedItems[j]!;
+            if (sp.collected) continue;
+            if (collectedSpawn.has(j)) continue;
+            if (
+              sp.x >= x &&
+              sp.x <= x + bW &&
+              sp.y >= y &&
+              sp.y <= y + bH
+            ) {
+              pri += itemPriority(sp);
+              collectedSpawn.add(j);
+            }
+          }
+        }
+        return pri;
+      };
+      const catchScore = simScore(true);
+      const skipScore = simScore(false);
+      // 임계값: skip이 catch보다 K배 이상 이득일 때만 skip. 미묘한 차이는 catch 유지.
+      // 근거: 시뮬-실제 궤도 오차로 봇 skip 후 실제 자연 수집 실패 케이스 다수 발생.
+      // K=2로 사용자 케이스 (비율 20:1) 유지 + 부작용 케이스 (비율 1~2배) 제거.
+      const SKIP_MARGIN_K = 2;
+      if (skipScore > catchScore * SKIP_MARGIN_K && skipScore > catchScore + 3) {
+        return { jump: false, slide: false, debugReason: "궤도 시뮬 대기" };
+      }
     }
 
     // 수집 점프는 가까이 통과로 잡을 ground 효과·고가 코인이 있으면 미룬다
