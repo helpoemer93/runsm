@@ -51,28 +51,48 @@ function visibleObstacles(world: World): Obstacle[] {
 // 회피를 몇 tick 미루면 봇이 걸어가 자연 수집 가능하고, 그 시점에도 targetX까지
 // minReserve만큼 여유가 남아 회피 재발동에 지장 없음.
 // 지면 아이템 = y ≤ baseHeight (봇이 지면 상태로 몸통 사각형에 걸리는 y 범위).
+// 봇 앞 (botFrontX, targetX) 사이 지면 아이템 중 가장 뒤(target에 가장 가까운) x 리턴.
+// 없으면 -Infinity. 호출자가 지연 후 회피 안전 여부 판정 시 사용.
+function lastGroundItemXBefore(
+  world: World,
+  botFrontX: number,
+  targetX: number,
+): number {
+  const baseH = world.runner.baseHeight;
+  const isGroundY = (y: number) => y >= 0 && y <= baseH;
+  let lastX = -Infinity;
+  for (let i = 0; i < world.currentTrack.items.length; i++) {
+    if (world.currentItemCollected[i]) continue;
+    const it = world.currentTrack.items[i]!;
+    if (!isGroundY(it.y)) continue;
+    if (it.x > botFrontX && it.x < targetX && it.x > lastX) lastX = it.x;
+  }
+  for (const sp of world.spawnedItems) {
+    if (sp.collected) continue;
+    if (!isGroundY(sp.y)) continue;
+    if (sp.x > botFrontX && sp.x < targetX && sp.x > lastX) lastX = sp.x;
+  }
+  return lastX;
+}
+
+// 회피점프·구멍 회피 지연 판정 — 봇 앞 (botFrontX, targetX) 사이 지면 아이템 중
+// 가장 뒤(target에 가장 가까운) x 기준으로 지연 후 target까지 남는 gap이 minReserve
+// 이상이면 지연 안전 (true 반환). 여러 아이템 chain으로 회피 zone 이탈하던 문제 방지.
+// 케이스: 시드 825567814 신발×3 lv20 t=751 봇 x=8249.7 obstacle x=8432.7,
+//   지면 (8294,0) v=5 + (8344,0) v=1. 원 로직 → 지연 chain → 옆면 충돌.
+//   새 로직: 마지막 (8344,0) 통과 후 gap 58.7 < minReserve 65.9 → 지연 skip → 회피 즉시 발동.
 function hasGroundItemBefore(
   world: World,
   botFrontX: number,
   targetX: number,
   minReserve: number,
 ): boolean {
-  const scanRight = targetX - minReserve;
-  if (scanRight <= botFrontX) return false;
-  const baseH = world.runner.baseHeight;
-  const isGroundY = (y: number) => y >= 0 && y <= baseH;
-  for (let i = 0; i < world.currentTrack.items.length; i++) {
-    if (world.currentItemCollected[i]) continue;
-    const it = world.currentTrack.items[i]!;
-    if (!isGroundY(it.y)) continue;
-    if (it.x > botFrontX && it.x <= scanRight) return true;
-  }
-  for (const sp of world.spawnedItems) {
-    if (sp.collected) continue;
-    if (!isGroundY(sp.y)) continue;
-    if (sp.x > botFrontX && sp.x <= scanRight) return true;
-  }
-  return false;
+  const lastX = lastGroundItemXBefore(world, botFrontX, targetX);
+  if (lastX === -Infinity) return false;
+  const baseW = world.runner.baseWidth;
+  // 마지막 아이템 통과 시점 봇 우측 = lastX + baseW. 그 시점 target까지 gap.
+  const gapAfterCollect = targetX - (lastX + baseW);
+  return gapAfterCollect >= minReserve;
 }
 
 function visiblePits(world: World): Pit[] {
@@ -222,6 +242,31 @@ function nearGroundProtect(world: World, range: number): boolean {
   const jbH = jumpBodyHeight(world);
   const singleJumpReach =
     (r.jumpVelocity * r.jumpVelocity) / (2 * GRAVITY_ABS) + jbH;
+
+  // 봇 앞 회피 zone 안 낮은 obstacle 있으면 보호 해제 — 회피 우선.
+  // 원 로직은 봇 앞 지면 heal/v≥5 잡으려 walking 유지. 하지만 회피 zone 안 obstacle
+  //   있으면 지연으로 옆면 30 데미지 감수 위험 → 아이템 이득보다 손해 큼. 회피 발동 우선.
+  // 케이스: 신발×3 lv20 시드 1175943786 t=1087 봇 앞 obstacle(gap 154, avoid zone 진입)
+  //   + 지면 v=5 → 원 로직 walking 유지 → 옆면 충돌 사망. 회피 우선하면 안전 통과.
+  const effSpeed = currentEffectiveSpeed(world);
+  const avoidLowMin = AVOID_LOW_TRIGGER_MIN_SEC * effSpeed;
+  const avoidLowMax = AVOID_LOW_TRIGGER_MAX_SEC * effSpeed;
+  const avoidHighMin = AVOID_HIGH_TRIGGER_MIN_SEC * effSpeed;
+  const avoidHighMax = AVOID_HIGH_TRIGGER_MAX_SEC * effSpeed;
+  const gapMargin = 0.5 * effSpeed * TICK_DURATION;
+  const highHeightLimit = singleJumpHeightLimit(world);
+  const visibleObs = visibleObstacles(world);
+  for (const o of visibleObs) {
+    if ((o.yBottom ?? 0) > 0) continue; // 천장은 슬라이드 영역, 회피점프 대상 X
+    if (o.kind === "platform") continue;
+    const gap = o.x - (r.x + r.width);
+    const isHigh = o.height > highHeightLimit;
+    const min = isHigh ? avoidHighMin : avoidLowMin;
+    const max = isHigh ? avoidHighMax : avoidLowMax;
+    if (gap >= min - gapMargin && gap <= max + gapMargin) {
+      return false;
+    }
+  }
 
   // 봇 활성 중 effect는 중복 발동 가치 작음(시간 max 갱신만) → priority 0으로 취급.
   // 케이스: seed 1189635507 dash 활성 중 dash 잡으러 점프해서 ground heal 미스.
@@ -564,10 +609,15 @@ export function decide(world: World): Input {
     // 봇 단점프 시작 후 정점에서 이단점프 보충하면 high obstacle 위 통과 가능한지 시뮬.
     // 봇 박스 [봇.y, 봇.y+baseHeight] vs obstacle [0, o.height] — 봇.y >= o.height면 통과.
     // 회피점프 nextObstacleTooClose 검사와 blocking check 두 곳에서 사용.
-    const canDoubleJumpClear = (oX: number, oWidth: number, oHeight: number): boolean => {
+    const canDoubleJumpClearFrom = (
+      startX: number,
+      oX: number,
+      oWidth: number,
+      oHeight: number,
+    ): boolean => {
       const tPeak = r.jumpVelocity / GRAVITY_ABS;
-      const tEnter = (oX - r.baseWidth - r.x) / effSpeed;
-      const tExit = (oX + oWidth - r.x) / effSpeed;
+      const tEnter = (oX - r.baseWidth - startX) / effSpeed;
+      const tExit = (oX + oWidth - startX) / effSpeed;
       if (tEnter < tPeak) return false; // 봇 정점 후 obstacle 진입이어야 보충 의미
       const yPeak = (r.jumpVelocity * r.jumpVelocity) / (2 * GRAVITY_ABS);
       const yAfterDj = (t: number): number => {
@@ -576,9 +626,13 @@ export function decide(world: World): Input {
           yPeak + r.jumpVelocity * tau - 0.5 * GRAVITY_ABS * tau * tau
         );
       };
-      // obstacle 통과 시작/끝 모두 봇.y >= o.height면 안전 (그 사이는 새 정점이라 더 높음)
       return yAfterDj(tEnter) >= oHeight && yAfterDj(tExit) >= oHeight;
     };
+    const canDoubleJumpClear = (
+      oX: number,
+      oWidth: number,
+      oHeight: number,
+    ): boolean => canDoubleJumpClearFrom(r.x, oX, oWidth, oHeight);
 
     if (!lastingImmune) {
       for (let i = 0; i < visibleObs.length; i++) {
@@ -653,6 +707,53 @@ export function decide(world: World): Input {
             const botFrontX = r.x + r.baseWidth;
             const minReserve = min + 2 * effSpeed * TICK_DURATION;
             if (hasGroundItemBefore(world, botFrontX, o.x, minReserve)) {
+              // 지연 gap 여유 확보. 지연 후 봇 위치에서 다음 obstacle
+              //   nextObstacleTooClose 상태가 새로 활성화되면 지연 후 회피 불가 →
+              //   지연 안 하고 지금 즉시 회피 발동.
+              // 케이스: 시드 1175943786 신발×3 lv20 t=1087 지연 판정 후, 지연 진행 중
+              //   t=1093에 봇 x가 앞으로 이동해 다음 obstacle 6935.3(h=150) 근접 →
+              //   nextObstacleTooClose 활성화 → 회피 skip → 옆면 충돌 사망.
+              //   지금 시점(t=1087)에 지연 후 상황 시뮬해서 nextObstacleTooClose 예상되면 즉시 회피.
+              const lastX = lastGroundItemXBefore(world, botFrontX, o.x);
+              // 봇 자연 수집 시점 봇 우측 = lastX (봇 x = lastX - baseWidth) 넘어야 지남.
+              // 이산 tick 반영: (필요 dx)/(tick당 이동) 반올림해서 실제 봇 x 예상.
+              const perTick = effSpeed * TICK_DURATION;
+              const nTicksToPass =
+                perTick > 0
+                  ? Math.max(0, Math.ceil((lastX - r.baseWidth - r.x) / perTick))
+                  : 0;
+              const botXAfterDelay = r.x + nTicksToPass * perTick;
+              const flightEndAfterDelay =
+                botXAfterDelay + r.baseWidth + flightDist;
+              let nextTooCloseAfterDelay = false;
+              for (let j = 0; j < visibleObs.length; j++) {
+                if (j === i) continue;
+                const nextO = visibleObs[j]!;
+                if (nextO.kind === "platform") continue;
+                if ((nextO.yBottom ?? 0) > 0) continue;
+                if (nextO.x <= o.x) continue;
+                const nextGap = nextO.x - flightEndAfterDelay;
+                if (nextGap <= 0) continue;
+                const nextIsHigh = nextO.height > highHeightLimit;
+                const nextMin = nextIsHigh ? avoidHighMin : avoidLowMin;
+                if (nextGap < nextMin) {
+                  if (
+                    !canDoubleJumpClearFrom(
+                      botXAfterDelay,
+                      nextO.x,
+                      nextO.width,
+                      nextO.height,
+                    )
+                  ) {
+                    nextTooCloseAfterDelay = true;
+                  }
+                }
+                break;
+              }
+              if (nextTooCloseAfterDelay) {
+                // 지연 후 회피 불가 → 지금 즉시 회피
+                return { jump: true, slide: false, debugReason: "회피점프" };
+              }
               continue;
             }
             return { jump: true, slide: false, debugReason: "회피점프" };
