@@ -271,31 +271,56 @@ function nearGroundProtect(world: World, range: number): boolean {
   }
   if (groundProtectPri === 0) return false;
 
-  // 1단계: 단점프로 잡을 수 있는 공중 아이템(effect + 코인 v≥5). priority가 ground 보호
-  // 대상보다 크면 보호 해제 — 그 점프로 같이 잡힐 수도, 미스해도 가치 큼.
-  // 이전엔 공중 코인 exclude했으나 지면 c5(pri 5) + 공중 c20(pri 20)처럼 가치 역전 케이스에
-  // c5 우선하는 오판 발생 (시드 736305561). pri 비교만으로 충분 — 지면 heal×N(pri 1000 max)이
-  // 공중 c5(pri 5)를 이기고, 공중 c20(pri 20)이 지면 c5(pri 5)를 이김.
-  for (let i = 0; i < world.currentTrack.items.length; i++) {
-    if (world.currentItemCollected[i]) continue;
-    const item = world.currentTrack.items[i]!;
+  // 1단계: 공중 catchable priority "합" > 지면 보호 대상 pri × K 이면 해제.
+  // - 단점프 도달 가능 (y ∈ (jbH, singleJumpReach]) 공중 아이템 (effect + 코인 v≥5)
+  // - 이단점프 콤보 대상 (heal/magnet, y ∈ (singleJumpReach, doubleJumpReach])
+  //   봇 "비행중 상승 수집" 로직이 상승 중 이단점프 자동 발동해서 잡음.
+  // 이전 pri 개별 비교(`>`)는 지면 v=5(pri 5) 하나 vs 공중 v=5×2(합 10) 케이스 놓침
+  //   (5 > 5 false → walking 유지 → 공중 놓침. 시드 962696644 회복부적×3 t≈218).
+  // 지면 v=5 vs 공중 v=20 하나(pri 20) 같은 극단 케이스는 여전히 처리
+  //   (20 > 5 → 해제). 지면 heal(pri 1000) vs 공중 v=5×N도 유지 (합 ≤ 100 << 1000).
+  const doubleJumpReach =
+    (r.jumpVelocity * r.jumpVelocity) / GRAVITY_ABS + jbH;
+  let airCatchablePriSum = 0;
+  const accumulateAir = (item: {
+    x: number;
+    y: number;
+    value?: number;
+    effect?: import("./stage").ItemEffect;
+  }): void => {
     const isAirCatchable =
       item.effect !== undefined || (item.value ?? 1) >= 5;
-    if (!isAirCatchable) continue;
-    if (item.y <= jbH) continue;
-    if (item.y > singleJumpReach) continue;
+    if (!isAirCatchable) return;
     const gap = item.x - r.x;
-    if (gap >= 0 && gap <= range && effectivePri(item) > groundProtectPri) return false;
+    if (gap < 0 || gap > range) return;
+    // 단점프 도달 가능 (몸통 위, 정점 이하)
+    if (item.y > jbH && item.y <= singleJumpReach) {
+      airCatchablePriSum += effectivePri(item);
+      return;
+    }
+    // 이단점프 콤보 대상 — heal/magnet만. 저가치 코인 이단점프 콤보는 flight 길어
+    //   다른 catch·회피 놓칠 위험 대비 이득 작음 (봇 실제 로직도 heal/magnet만 콤보).
+    if (
+      (item.effect === "heal" || item.effect === "magnet") &&
+      item.y > singleJumpReach &&
+      item.y <= doubleJumpReach
+    ) {
+      airCatchablePriSum += effectivePri(item);
+    }
+  };
+  for (let i = 0; i < world.currentTrack.items.length; i++) {
+    if (world.currentItemCollected[i]) continue;
+    accumulateAir(world.currentTrack.items[i]!);
   }
   for (const sp of world.spawnedItems) {
     if (sp.collected) continue;
-    const isAirCatchable = sp.effect !== undefined || (sp.value ?? 1) >= 5;
-    if (!isAirCatchable) continue;
-    if (sp.y <= jbH) continue;
-    if (sp.y > singleJumpReach) continue;
-    const gap = sp.x - r.x;
-    if (gap >= 0 && gap <= range && effectivePri(sp) > groundProtectPri) return false;
+    accumulateAir(sp);
   }
+  // 임계값 K: 공중 합이 지면 pri보다 K배 이상 크면 해제. K=1이면 딱 넘으면.
+  // 근거: 봇 catch 발동해도 공중 여러 개 실제로 다 잡는지는 궤도·timing에 달림 → 여유.
+  //   벤치에서 튜닝. 부작용 크면 K 올림.
+  const AIR_SUM_MARGIN_K = 3;
+  if (airCatchablePriSum > groundProtectPri * AIR_SUM_MARGIN_K) return false;
   return true;
 }
 
