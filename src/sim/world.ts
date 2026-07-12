@@ -75,6 +75,12 @@ export interface Runner {
   coinSprayTicks: number; // coinSpray 활성 남은 ticks
   coinSpraySpawnAcc: number; // coinSpray 트리거용 누적 이동 거리 (COIN_SPRAY_TRIGGER_DIST마다 소환)
   coinBoostTicks: number; // coinBoost 활성 남은 ticks (지속 동안 새 v=1 스폰도 5로 변환)
+  // 장비 스탯 (사이클 시작 시 effectiveStats로 세팅. 사이클 동안 불변).
+  itemDurationMult: number; // 아이템·스킬 지속시간 곱 배율
+  healAmountMult: number; // heal 아이템 회복량 곱 배율
+  healSpeedBoostPct: number; // heal 획득 1회당 이동속도 배율 추가량 (0.01=+1%)
+  // heal 누적 이동속도 보너스 (사이클 시작 시 1.0. heal 획득 시 healSpeedBoostPct 누적).
+  healSpeedBonusMult: number;
   coins: number;
   totalDistance: number;
   lap: number;
@@ -689,6 +695,15 @@ export function createWorld(
   if (loadout.pet?.skill) {
     skills.push(createSkillState(loadout.pet.skill, TICK_DURATION));
   }
+  // 장비 itemDurationMult가 스킬 지속시간에도 반영되도록 durationTotalTicks 재계산.
+  // 스킬 자체 발동(tickSkill에서 cooldown→active 전환) 시 이 값을 사용하므로 반영됨.
+  if (stats.itemDurationMult !== 1) {
+    for (const s of skills) {
+      s.durationTotalTicks = Math.round(
+        s.durationTotalTicks * stats.itemDurationMult,
+      );
+    }
+  }
   const rng = new Rng(seed);
   // 봇 baseRunSpeed 기준으로 트랙들 환산 — 같은 트랙도 봇 속도에 따라 obstacle x가
   // 늘어나/줄어 "도달 시간"이 일정해짐. 풀 전체를 미리 환산해 두면 트랙 전환에도 자동 반영.
@@ -728,6 +743,10 @@ export function createWorld(
       coinSprayTicks: 0,
       coinSpraySpawnAcc: 0,
       coinBoostTicks: 0,
+      itemDurationMult: stats.itemDurationMult,
+      healAmountMult: stats.healAmountMult,
+      healSpeedBoostPct: stats.healSpeedBoostPct,
+      healSpeedBonusMult: 1,
       coins: 0,
       totalDistance: 0,
       lap: 0,
@@ -876,11 +895,16 @@ function handleSkillActivation(world: World, skillId: string): void {
 // 아이템 수집 시 효과 적용. 코인이면 가치 누적, 효과 아이템이면 해당 효과 발동.
 function applyItemEffect(world: World, item: Item | SpawnedItem): void {
   const r = world.runner;
+  const durMult = r.itemDurationMult;
   if (item.effect === "magnet") {
-    r.magnetTicks = Math.max(r.magnetTicks, MAGNET_DURATION_TICKS);
+    r.magnetTicks = Math.max(
+      r.magnetTicks,
+      Math.round(MAGNET_DURATION_TICKS * durMult),
+    );
   } else if (item.effect === "dash") {
     const dashSkill = world.skills.find((s) => s.spec.id === "dash");
     if (dashSkill) {
+      // durationTotalTicks는 createWorld에서 이미 itemDurationMult 반영됨.
       dashSkill.activeTicks = dashSkill.durationTotalTicks;
       dashSkill.cooldownTicks = 0;
       // dash 스킬이 방금 켜졌으면 같은 step() 안 트랜지션 감지가 handleSkillActivation을
@@ -888,29 +912,43 @@ function applyItemEffect(world: World, item: Item | SpawnedItem): void {
     } else {
       // dash 스킬 없는 캐릭도 dash 아이템 효과 받게 — itemDashTicks fallback.
       // 이 경로에서는 스킬 활성화 이벤트가 없으니 dashGiant를 직접 트리거.
-      r.itemDashTicks = Math.max(r.itemDashTicks, DASH_ITEM_FALLBACK_TICKS);
-      activateDashGiantIfApplicable(world, DASH_ITEM_FALLBACK_TICKS);
+      const ticks = Math.round(DASH_ITEM_FALLBACK_TICKS * durMult);
+      r.itemDashTicks = Math.max(r.itemDashTicks, ticks);
+      activateDashGiantIfApplicable(world, ticks);
     }
   } else if (item.effect === "giant") {
-    r.giantTicks = Math.max(r.giantTicks, GIANT_DURATION_TICKS);
+    r.giantTicks = Math.max(
+      r.giantTicks,
+      Math.round(GIANT_DURATION_TICKS * durMult),
+    );
   } else if (item.effect === "heal") {
-    r.hp = Math.min(r.maxHp, r.hp + HEAL_AMOUNT);
-    // 장비 healDash 효과 — 합산해서 itemDashTicks에 max로 적용
+    r.hp = Math.min(r.maxHp, r.hp + HEAL_AMOUNT * r.healAmountMult);
+    // 장비 healDash 효과 — 합산해서 itemDashTicks에 max로 적용 (itemDurationMult도 곱).
     let totalSec = 0;
     for (const eq of world.loadout.equipment) {
       totalSec += eq.healDashSeconds ?? 0;
     }
     if (totalSec > 0) {
-      const ticks = Math.round(totalSec / TICK_DURATION);
+      const ticks = Math.round((totalSec / TICK_DURATION) * durMult);
       r.itemDashTicks = Math.max(r.itemDashTicks, ticks);
       // healDash로 대시 상태가 되면 dashGiant 특성 발동.
       activateDashGiantIfApplicable(world, ticks);
     }
+    // heal 획득 1회당 사이클 동안 이동속도 배율 누적 (여러 장비면 합산 후 1회 누적).
+    if (r.healSpeedBoostPct > 0) {
+      r.healSpeedBonusMult += r.healSpeedBoostPct;
+    }
   } else if (item.effect === "coinSpray") {
-    r.coinSprayTicks = Math.max(r.coinSprayTicks, COIN_SPRAY_DURATION_TICKS);
+    r.coinSprayTicks = Math.max(
+      r.coinSprayTicks,
+      Math.round(COIN_SPRAY_DURATION_TICKS * durMult),
+    );
     r.coinSpraySpawnAcc = 0;
   } else if (item.effect === "coinBoost") {
-    r.coinBoostTicks = Math.max(r.coinBoostTicks, COIN_BOOST_DURATION_TICKS);
+    r.coinBoostTicks = Math.max(
+      r.coinBoostTicks,
+      Math.round(COIN_BOOST_DURATION_TICKS * durMult),
+    );
     // 획득 즉시 currentTrack 정적 items와 spawnedItems 중 v=1 코인을 v=5로 변환.
     // 원본 JSON 오염 방지를 위해 scaleTrack이 currentTrack.items를 이미 clone한 상태여야 함.
     for (const it of world.currentTrack.items) {
@@ -978,7 +1016,8 @@ export function step(world: World, input: Input): void {
   }
 
   r.vy += GRAVITY * TICK_DURATION;
-  const dx = r.baseRunSpeed * mods.speedMultiplier * TICK_DURATION;
+  const dx =
+    r.baseRunSpeed * mods.speedMultiplier * r.healSpeedBonusMult * TICK_DURATION;
   const yPrev = r.y;
   r.x += dx;
   r.y += r.vy * TICK_DURATION;
@@ -1081,7 +1120,8 @@ export function step(world: World, input: Input): void {
   // coinSpray 활성 중: 봇 x 누적 이동 dx를 acc에 쌓아 COIN_SPRAY_TRIGGER_DIST마다 소환.
   if (r.coinSprayTicks > 0) {
     r.coinSpraySpawnAcc += dx;
-    const effSpeed = r.baseRunSpeed * mods.speedMultiplier;
+    const effSpeed =
+      r.baseRunSpeed * mods.speedMultiplier * r.healSpeedBonusMult;
     while (r.coinSpraySpawnAcc >= COIN_SPRAY_TRIGGER_DIST) {
       r.coinSpraySpawnAcc -= COIN_SPRAY_TRIGGER_DIST;
       spawnCoinSprayTriplet(world, effSpeed);

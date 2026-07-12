@@ -47,12 +47,23 @@ export interface EquipmentSpec {
   healDashSeconds?: number;
   // 결과창에서 누적 코인에 곱해질 배율 (시뮬에는 영향 없음).
   coinValueMult?: number;
+  // 지속시간 있는 아이템(magnet/giant/dash/coinSpray/coinBoost/healDash) + dash 스킬 자체
+  // 지속시간에 곱해질 배율. 여러 장비에 있으면 모두 곱해짐.
+  itemDurationMult?: number;
+  // heal 아이템 회복량에 곱해질 배율. 여러 장비에 있으면 모두 곱해짐.
+  healAmountMult?: number;
+  // heal 아이템 획득 1회마다 사이클 동안 이동속도 배율에 더해지는 값 (0.01=+1%).
+  // 여러 장비에 있으면 heal 1회당 각각 스택(합산 후 누적).
+  healSpeedBoostPct?: number;
   // 강화 1레벨당 각 필드에 더해질 증분. 신발이라면 { runSpeedMult: 0.01 }.
   enhanceDelta?: {
     runSpeedMult?: number;
     jumpVelocityMult?: number;
     healDashSeconds?: number;
     coinValueMult?: number;
+    itemDurationMult?: number;
+    healAmountMult?: number;
+    healSpeedBoostPct?: number;
   };
 }
 
@@ -67,14 +78,23 @@ export function effectiveStats(loadout: Loadout) {
   const c = loadout.character;
   let runSpeedMult = 1;
   let jumpVelocityMult = 1;
+  let itemDurationMult = 1;
+  let healAmountMult = 1;
+  let healSpeedBoostPct = 0;
   for (const e of loadout.equipment) {
     runSpeedMult *= e.runSpeedMult ?? 1;
     jumpVelocityMult *= e.jumpVelocityMult ?? 1;
+    itemDurationMult *= e.itemDurationMult ?? 1;
+    healAmountMult *= e.healAmountMult ?? 1;
+    healSpeedBoostPct += e.healSpeedBoostPct ?? 0;
   }
   return {
     runSpeed: c.runSpeed * runSpeedMult,
     jumpVelocity: c.jumpVelocity * jumpVelocityMult,
     width: c.width,
     height: c.height,
+    itemDurationMult,
+    healAmountMult,
+    healSpeedBoostPct,
   };
 }

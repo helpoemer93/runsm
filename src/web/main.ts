@@ -1108,6 +1108,14 @@ function equipmentSummary(e: EquipmentSpec): string {
   if (e.healDashSeconds) parts.push(`회복대시 ${e.healDashSeconds}s`);
   if (e.coinValueMult !== undefined && e.coinValueMult !== 1)
     parts.push(`코인×${e.coinValueMult}`);
+  if (e.itemDurationMult !== undefined && e.itemDurationMult !== 1)
+    parts.push(`아이템지속×${e.itemDurationMult.toFixed(2)}`);
+  if (e.healAmountMult !== undefined && e.healAmountMult !== 1)
+    parts.push(`회복×${e.healAmountMult.toFixed(2)}`);
+  if (e.healSpeedBoostPct !== undefined && e.healSpeedBoostPct !== 0)
+    parts.push(
+      `회복시속도+${(e.healSpeedBoostPct * 100).toFixed(1)}%`,
+    );
   return parts.join(", ");
 }
 

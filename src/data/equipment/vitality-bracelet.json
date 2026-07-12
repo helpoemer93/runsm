@@ -1,0 +1,8 @@
+{
+  "id": "vitality-bracelet",
+  "name": "활력의 팔찌",
+  "healAmountMult": 1.1,
+  "enhanceDelta": {
+    "healAmountMult": 0.01
+  }
+}

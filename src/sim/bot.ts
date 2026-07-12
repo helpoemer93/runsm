@@ -219,7 +219,7 @@ function currentEffectiveSpeed(world: World): number {
   const mods = aggregateSkillModifiers(world.skills);
   let mult = mods.speedMultiplier;
   if (world.runner.itemDashTicks > 0) mult = Math.max(mult, 2);
-  return world.runner.baseRunSpeed * mult;
+  return world.runner.baseRunSpeed * mult * world.runner.healSpeedBonusMult;
 }
 
 // "비행 중 잃기 아까운" ground 아이템 — 모든 효과(heal/magnet/dash/giant) + v≥5 코인.

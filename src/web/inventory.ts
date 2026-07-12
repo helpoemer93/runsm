@@ -56,6 +56,15 @@ export function effectiveSpec(inst: ItemInstance): EquipmentSpec | undefined {
   if (base.coinValueMult !== undefined || d.coinValueMult)
     eff.coinValueMult =
       (base.coinValueMult ?? 1) + (d.coinValueMult ?? 0) * inst.level;
+  if (base.itemDurationMult !== undefined || d.itemDurationMult)
+    eff.itemDurationMult =
+      (base.itemDurationMult ?? 1) + (d.itemDurationMult ?? 0) * inst.level;
+  if (base.healAmountMult !== undefined || d.healAmountMult)
+    eff.healAmountMult =
+      (base.healAmountMult ?? 1) + (d.healAmountMult ?? 0) * inst.level;
+  if (base.healSpeedBoostPct !== undefined || d.healSpeedBoostPct)
+    eff.healSpeedBoostPct =
+      (base.healSpeedBoostPct ?? 0) + (d.healSpeedBoostPct ?? 0) * inst.level;
   return eff;
 }
 

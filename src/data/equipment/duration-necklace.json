@@ -1,0 +1,8 @@
+{
+  "id": "duration-necklace",
+  "name": "지속의 목걸이",
+  "itemDurationMult": 1.1,
+  "enhanceDelta": {
+    "itemDurationMult": 0.01
+  }
+}

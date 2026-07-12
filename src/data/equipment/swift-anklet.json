@@ -1,0 +1,8 @@
+{
+  "id": "swift-anklet",
+  "name": "질주의 발찌",
+  "healSpeedBoostPct": 0.01,
+  "enhanceDelta": {
+    "healSpeedBoostPct": 0.001
+  }
+}
