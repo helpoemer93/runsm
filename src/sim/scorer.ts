@@ -13,7 +13,7 @@ import { Item, Obstacle, Pit } from "./stage";
 const GRAVITY_ABS = 2200; // world.ts GRAVITY의 절댓값
 const OBSTACLE_DAMAGE = 30;
 const INVINCIBLE_TICKS = 60;
-const MAGNET_RANGE = 250;
+const MAGNET_RANGE = 167; // world.ts와 동기화 필요.
 const GIANT_SCALE = 2;
 
 // 점수 가중치 — 사고 심각도 차등.

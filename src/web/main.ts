@@ -1893,12 +1893,12 @@ function renderBot(bot: Bot) {
     const cy = GROUND_Y - r.y - r.height / 2;
     ctx.fillStyle = "rgba(170, 80, 220, 0.12)";
     ctx.beginPath();
-    ctx.arc(cx, cy, 250, 0, Math.PI * 2);
+    ctx.arc(cx, cy, 167, 0, Math.PI * 2);
     ctx.fill();
     ctx.strokeStyle = "rgba(170, 80, 220, 0.5)";
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.arc(cx, cy, 250, 0, Math.PI * 2);
+    ctx.arc(cx, cy, 167, 0, Math.PI * 2);
     ctx.stroke();
   }
 

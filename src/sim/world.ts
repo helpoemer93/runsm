@@ -28,7 +28,7 @@ const INVINCIBLE_TICKS = Math.round(1 / TICK_DURATION);
 const POST_BUFF_INVINCIBLE_TICKS = Math.round(2 / TICK_DURATION); // dash·itemDash·거대화 종료 후 2초 추가 무적
 
 // 효과 아이템 상수
-const MAGNET_RANGE = 250; // 자석 흡수 반경 (픽셀)
+const MAGNET_RANGE = 167; // 자석 흡수 반경 (픽셀). scorer.ts와 동기화 필요.
 const MAGNET_DURATION_TICKS = Math.round(5 / TICK_DURATION); // 자석 5초
 const GIANT_DURATION_TICKS = Math.round(5 / TICK_DURATION); // 거대화 5초
 const GIANT_SCALE = 2; // 거대화 시 캐릭터 크기 배율
