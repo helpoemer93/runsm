@@ -18,7 +18,13 @@ export interface Pit {
   width: number; // 구멍 가로 크기
 }
 
-export type ItemEffect = "magnet" | "dash" | "giant" | "heal";
+export type ItemEffect =
+  | "magnet"
+  | "dash"
+  | "giant"
+  | "heal"
+  | "coinSpray" // 3초 동안 봇 50px 이동마다 전방에 코인 3개 소환
+  | "coinBoost"; // 3초 동안 맵의 모든 v=1 코인을 v=5로 변환 (원복 없음)
 
 export interface Item {
   x: number; // 아이템 수평 위치 (점 좌표)
@@ -36,7 +42,9 @@ export type RandomDropKind =
   | "heal"
   | "magnet"
   | "dash"
-  | "giant";
+  | "giant"
+  | "coinSpray"
+  | "coinBoost";
 
 export interface RandomDrops {
   count: number; // 트랙당 spawn 개수

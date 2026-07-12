@@ -1598,6 +1598,10 @@ function itemStyle(item: { value?: number; effect?: import("../sim/stage").ItemE
     return { kind: "effect", fill: "#f73", stroke: "#a30", radius: 24, glyph: "⚡" };
   if (item.effect === "giant")
     return { kind: "effect", fill: "#ff5", stroke: "#aa0", radius: 24, glyph: "★" };
+  if (item.effect === "coinSpray")
+    return { kind: "effect", fill: "#fc6", stroke: "#a70", radius: 24, glyph: "❈" };
+  if (item.effect === "coinBoost")
+    return { kind: "effect", fill: "#fd0", stroke: "#a80", radius: 24, glyph: "×5" };
   const value = item.value ?? 1;
   if (value >= 20) return { kind: "coin", fill: "#c6f", stroke: "#73a", radius: 13 };
   if (value >= 5) return { kind: "coin", fill: "#f93", stroke: "#a40", radius: 10 };

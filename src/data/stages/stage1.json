@@ -21,7 +21,9 @@
       "heal": 2,
       "magnet": 1,
       "dash": 1,
-      "giant": 1
+      "giant": 1,
+      "coinSpray": 1,
+      "coinBoost": 1
     }
   }
 }

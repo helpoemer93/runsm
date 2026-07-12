@@ -35,6 +35,16 @@ const GIANT_SCALE = 2; // 거대화 시 캐릭터 크기 배율
 const HEAL_AMOUNT = 10; // 회복량
 // dash 효과 아이템 fallback: dash 스킬 없는 캐릭이 dash 아이템 먹었을 때 itemDashTicks에 직접 buff
 const DASH_ITEM_FALLBACK_TICKS = Math.round(3 / TICK_DURATION);
+// coinSpray 상수 — 3초 동안 봇 50px 이동마다 전방에 코인 3개 소환.
+const COIN_SPRAY_DURATION_TICKS = Math.round(3 / TICK_DURATION);
+const COIN_SPRAY_TRIGGER_DIST = 50; // 봇 x 누적 이동 이 값마다 트리거 1회
+const COIN_SPRAY_COUNT = 3; // 트리거당 소환 코인 수
+const COIN_SPRAY_LEAD_MIN_SEC = 0.15; // 봇 앞 소환 lead (봇 도달 시간)
+const COIN_SPRAY_LEAD_MAX_SEC = 0.3;
+const COIN_SPRAY_Y_MIN = 0;
+const COIN_SPRAY_Y_MAX = 180;
+// coinBoost 상수 — 3초 동안 맵의 v=1 코인을 v=5로 변환. 원복 없음.
+const COIN_BOOST_DURATION_TICKS = Math.round(3 / TICK_DURATION);
 
 // 파괴자 펫 상수
 const DESTROYER_MIN_DISTANCE = 400; // 이보다 가까운 장애물은 무시 (발 아래 spawn 방지)
@@ -62,6 +72,9 @@ export interface Runner {
   magnetTicks: number; // 자석 활성 남은 ticks
   giantTicks: number; // 거대화 활성 남은 ticks
   itemDashTicks: number; // 장비 healDash 효과로 활성된 dash buff 남은 ticks (스킬 dash와 별개)
+  coinSprayTicks: number; // coinSpray 활성 남은 ticks
+  coinSpraySpawnAcc: number; // coinSpray 트리거용 누적 이동 거리 (COIN_SPRAY_TRIGGER_DIST마다 소환)
+  coinBoostTicks: number; // coinBoost 활성 남은 ticks (지속 동안 새 v=1 스폰도 5로 변환)
   coins: number;
   totalDistance: number;
   lap: number;
@@ -136,7 +149,8 @@ function pickTrack(rng: Rng, pool: Stage[], excludeId: string | null): Stage {
 // 결과: 빠른 봇은 같은 시간 안에 더 많은 랜덤 드롭을 만남(속도 부적 보상).
 // 고정 obstacle/item은 obstacle과 코인 상대 위치 일관성을 위해 같이 환산.
 function scaleTrack(track: Stage, speedRatio: number): Stage {
-  if (speedRatio === 1) return track;
+  // speedRatio=1이라도 원본 mutation을 피하기 위해 clone. coinBoost가 items.value를
+  // 수정하는 경우 원본 JSON이 오염되면 결정론 깨짐.
   const scaled: Stage = {
     ...track,
     length: track.length * speedRatio,
@@ -209,6 +223,34 @@ function dropKindToItem(
       return { effect: "dash" };
     case "giant":
       return { effect: "giant" };
+    case "coinSpray":
+      return { effect: "coinSpray" };
+    case "coinBoost":
+      return { effect: "coinBoost" };
+  }
+}
+
+// coinSpray 트리거 시 봇 전방에 코인 3개 소환. y는 [0,60]/[60,120]/[120,180] 3구간에서 각각
+// 정수 rng — 서로 다른 y 자동 보장. x는 봇 앞 effSpeed×(0.15~0.3s) 랜덤 → 봇 도달 시간
+// 봇 속도와 무관하게 일정. 각 코인 값 확률: 75% v1, 20% v5, 5% v25.
+function spawnCoinSprayTriplet(world: World, effSpeed: number): void {
+  const r = world.runner;
+  const rng = world.rng;
+  const leadSec =
+    COIN_SPRAY_LEAD_MIN_SEC +
+    rng.next() * (COIN_SPRAY_LEAD_MAX_SEC - COIN_SPRAY_LEAD_MIN_SEC);
+  const spawnX = r.x + effSpeed * leadSec;
+  const segmentSize = (COIN_SPRAY_Y_MAX - COIN_SPRAY_Y_MIN) / COIN_SPRAY_COUNT;
+  for (let k = 0; k < COIN_SPRAY_COUNT; k++) {
+    const yMin = COIN_SPRAY_Y_MIN + segmentSize * k;
+    const yMax = yMin + segmentSize;
+    const y = rng.nextInt(Math.round(yMin), Math.round(yMax));
+    const roll = rng.next();
+    let value: number;
+    if (roll < 0.05) value = 25;
+    else if (roll < 0.25) value = 5;
+    else value = 1;
+    world.spawnedItems.push({ x: spawnX, y, value, collected: false });
   }
 }
 
@@ -683,6 +725,9 @@ export function createWorld(
       magnetTicks: 0,
       giantTicks: 0,
       itemDashTicks: 0,
+      coinSprayTicks: 0,
+      coinSpraySpawnAcc: 0,
+      coinBoostTicks: 0,
       coins: 0,
       totalDistance: 0,
       lap: 0,
@@ -861,6 +906,19 @@ function applyItemEffect(world: World, item: Item | SpawnedItem): void {
       // healDash로 대시 상태가 되면 dashGiant 특성 발동.
       activateDashGiantIfApplicable(world, ticks);
     }
+  } else if (item.effect === "coinSpray") {
+    r.coinSprayTicks = Math.max(r.coinSprayTicks, COIN_SPRAY_DURATION_TICKS);
+    r.coinSpraySpawnAcc = 0;
+  } else if (item.effect === "coinBoost") {
+    r.coinBoostTicks = Math.max(r.coinBoostTicks, COIN_BOOST_DURATION_TICKS);
+    // 획득 즉시 currentTrack 정적 items와 spawnedItems 중 v=1 코인을 v=5로 변환.
+    // 원본 JSON 오염 방지를 위해 scaleTrack이 currentTrack.items를 이미 clone한 상태여야 함.
+    for (const it of world.currentTrack.items) {
+      if (it.effect === undefined && (it.value ?? 1) === 1) it.value = 5;
+    }
+    for (const sp of world.spawnedItems) {
+      if (sp.effect === undefined && (sp.value ?? 1) === 1) sp.value = 5;
+    }
   } else {
     r.coins += item.value ?? 1;
   }
@@ -1013,9 +1071,31 @@ export function step(world: World, input: Input): void {
   // 효과 타이머 감소
   if (r.magnetTicks > 0) r.magnetTicks--;
   if (r.giantTicks > 0) r.giantTicks--;
+  if (r.coinSprayTicks > 0) r.coinSprayTicks--;
+  if (r.coinBoostTicks > 0) r.coinBoostTicks--;
   // 거대화가 이 틱에 막 종료 → 잔여 무적 부여
   if (giantWasActive && r.giantTicks === 0) {
     r.invincibleTicks = Math.max(r.invincibleTicks, POST_BUFF_INVINCIBLE_TICKS);
+  }
+
+  // coinSpray 활성 중: 봇 x 누적 이동 dx를 acc에 쌓아 COIN_SPRAY_TRIGGER_DIST마다 소환.
+  if (r.coinSprayTicks > 0) {
+    r.coinSpraySpawnAcc += dx;
+    const effSpeed = r.baseRunSpeed * mods.speedMultiplier;
+    while (r.coinSpraySpawnAcc >= COIN_SPRAY_TRIGGER_DIST) {
+      r.coinSpraySpawnAcc -= COIN_SPRAY_TRIGGER_DIST;
+      spawnCoinSprayTriplet(world, effSpeed);
+    }
+  }
+  // coinBoost 활성 중: 매 tick 새로 spawn된 v=1도 5로 변환 (자석 무관 스캔).
+  // O(items+spawnedItems) — 벤치 오버헤드 작음. 활성 지속 3초.
+  if (r.coinBoostTicks > 0) {
+    for (const it of world.currentTrack.items) {
+      if (it.effect === undefined && (it.value ?? 1) === 1) it.value = 5;
+    }
+    for (const sp of world.spawnedItems) {
+      if (sp.effect === undefined && (sp.value ?? 1) === 1) sp.value = 5;
+    }
   }
 
   // 슬라이드 / 거대화에 따라 effective 크기 결정 (거대화 우선)
