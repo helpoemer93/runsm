@@ -1722,9 +1722,6 @@ export function decide(world: World): Input {
       // 단점프 trajectory의 t 시점 봇 발 y (지금이 t=0)
       const yAtSingle = (t: number): number =>
         r.y + r.vy * t - 0.5 * GRAVITY_ABS * t * t;
-      // 이단점프 즉시 발동 시 trajectory (vy를 jumpVelocity로 재설정)
-      const yAtDouble = (t: number): number =>
-        r.y + r.jumpVelocity * t - 0.5 * GRAVITY_ABS * t * t;
 
       for (let i = 0; i < visibleObs.length; i++) {
         const o = visibleObs[i]!;
@@ -1747,8 +1744,26 @@ export function decide(world: World): Input {
         const yMinSingle = Math.min(yAtSingle(tEnter), yAtSingle(tExit));
         if (yMinSingle >= o.height) continue; // 단점프로 안전 통과 — 발동 X
 
-        // 이단점프 즉시 발동 시 같은 구간에서 안전 통과 가능한지 — 안전 마진 적용
-        const yMinDouble = Math.min(yAtDouble(tEnter), yAtDouble(tExit));
+        // 이단점프 즉시 발동 시 obs 겹침 구간의 실제 최저 y를 60Hz 이산 sim으로 계산.
+        // 연속시간 공식(y = y0 + v0·t − ½g·t²)은 world.step의 Euler forward 이산 시뮬과
+        // 차이가 커서 실측보다 정점 y를 높게 예측 → 옆면 충돌 놓침.
+        let yMinDouble = Infinity;
+        let simY = r.y;
+        let simVy = r.jumpVelocity;
+        let simX = r.x;
+        const simStep = effSpeed * TICK_DURATION;
+        const oRight = o.x + o.width;
+        for (let st = 0; st < 200; st++) {
+          simVy -= GRAVITY_ABS * TICK_DURATION;
+          simY += simVy * TICK_DURATION;
+          simX += simStep;
+          if (simY <= 0) break;
+          if (simX + r.baseWidth > o.x && simX < oRight) {
+            if (simY < yMinDouble) yMinDouble = simY;
+          } else if (simX >= oRight) {
+            break;
+          }
+        }
         if (yMinDouble >= o.height + SINGLE_JUMP_SAFETY_MARGIN) {
           // apexTrap(봇 상승 중 정점 딜레마)일 땐 지금 봇 y 낮아서 wouldLandInPitAfterDouble
           // 대체로 false — 즉시 발동으로 pit 앞 착지. 하강 중(정상)에만 pit skip 검사.
