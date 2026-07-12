@@ -188,6 +188,24 @@ function scaleTrack(track: Stage, speedRatio: number): Stage {
   return scaled;
 }
 
+// heal 획득으로 healSpeedBonusMult가 갱신될 때, 봇 실속도 증가에 맞춰 트랙 전체 좌표계와
+// 봇 위치·누적 지표를 같은 배율로 곱한다. 봇이 obstacle에 도달하는 "시간"이 일정 유지 →
+// 회피 여유 유지. 결정론은 배율 곱만 수행하므로 시드 재현 그대로.
+function rescaleWorld(world: World, mult: number): void {
+  if (mult === 1) return;
+  world.currentTrack = scaleTrack(world.currentTrack, mult);
+  world.nextTrack = scaleTrack(world.nextTrack, mult);
+  if (world.prevTrack) world.prevTrack = scaleTrack(world.prevTrack, mult);
+  world.trackPool = world.trackPool.map((t) => scaleTrack(t, mult));
+  for (const sp of world.spawnedItems) sp.x *= mult;
+  const r = world.runner;
+  r.x *= mult;
+  r.totalDistance *= mult;
+  r.coinPassiveAnchor *= mult;
+  world.currentTrackStart *= mult;
+  world.prevTrackStart *= mult;
+}
+
 // RandomObstacleKind → 구체 dimension. 트랙 데이터에서 width/height 따로 안 받고
 // 종류별 표준 규격 사용 — 무작위 생성을 단순하게.
 function obstacleKindToShape(kind: RandomObstacleKind): {
@@ -907,8 +925,10 @@ function applyItemEffect(world: World, item: Item | SpawnedItem): void {
       // durationTotalTicks는 createWorld에서 이미 itemDurationMult 반영됨.
       dashSkill.activeTicks = dashSkill.durationTotalTicks;
       dashSkill.cooldownTicks = 0;
-      // dash 스킬이 방금 켜졌으면 같은 step() 안 트랜지션 감지가 handleSkillActivation을
-      // 부르고 거기서 dashGiant 처리됨. 여기 별도 처리 불필요.
+      // 트랜지션 감지 로직(step 앞부분)은 아이템 수집(step 뒷부분)보다 앞에 실행되므로
+      // 여기서 dashGiant를 직접 활성해야 함. handleSkillActivation 경로로는 이 tick에
+      // 발동 안 됨.
+      activateDashGiantIfApplicable(world, dashSkill.durationTotalTicks + 1);
     } else {
       // dash 스킬 없는 캐릭도 dash 아이템 효과 받게 — itemDashTicks fallback.
       // 이 경로에서는 스킬 활성화 이벤트가 없으니 dashGiant를 직접 트리거.
@@ -935,8 +955,11 @@ function applyItemEffect(world: World, item: Item | SpawnedItem): void {
       activateDashGiantIfApplicable(world, ticks);
     }
     // heal 획득 1회당 사이클 동안 이동속도 배율 누적 (여러 장비면 합산 후 1회 누적).
+    // 배율 증가 시 트랙 좌표계·봇 위치도 같은 비율로 곱해 obstacle 도달 시간 유지.
     if (r.healSpeedBoostPct > 0) {
+      const before = r.healSpeedBonusMult;
       r.healSpeedBonusMult += r.healSpeedBoostPct;
+      rescaleWorld(world, r.healSpeedBonusMult / before);
     }
   } else if (item.effect === "coinSpray") {
     r.coinSprayTicks = Math.max(
