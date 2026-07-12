@@ -33,6 +33,14 @@ function itemScore(item: { value?: number; effect?: string }): number {
   return item.value ?? 1;
 }
 
+// 획득 시 즉시 무적 상태(거대화/질주)를 부여하는 아이템인지.
+// 무적 아이템은 획득 순간부터 obstacle 통과 가능 — 옆면 충돌 감수해서 잡아도 실질 손해 없음.
+// 반면 magnet/heal/코인은 무적 부여 X → 충돌 감수 시 순손실. 스코어러가 이런 후보 선택 안 하도록
+// collision 발생 후보의 비무적 아이템 점수는 최종 score에서 무시.
+function isImmuneItem(item: { effect?: string }): boolean {
+  return item.effect === "giant" || item.effect === "dash";
+}
+
 interface SimState {
   x: number;
   y: number;
@@ -370,7 +378,11 @@ export function scoreActionPlan(
   const collectedStaticThisSim = new Set<number>(); // key: index (currentTrack) + offset
   const collectedSpawnThisSim = new Set<number>();
 
-  let itemsScore = 0;
+  // 아이템 점수를 무적/비무적으로 분리 축적.
+  // 최종 score 계산 시 collision 발생 후보는 비무적 아이템 점수 무시 (사용자 원칙:
+  // 충돌 감수하고 아이템 획득은 무적 아이템만 허용).
+  let immuneItemsScore = 0;
+  let nonImmuneItemsScore = 0;
   let collisionCount = 0;
   let pitFell = false;
   // 착지 후 walking 충돌 검사 지속 여부 — 착지 시 obstacle 여유 부족(회피 불가)이면 true.
@@ -534,7 +546,9 @@ export function scoreActionPlan(
         const dy = it.y - cy;
         if (dx * dx + dy * dy <= r2) {
           collectedStaticThisSim.add(key);
-          itemsScore += itemScore(it);
+          const s = itemScore(it);
+          if (isImmuneItem(it)) immuneItemsScore += s;
+          else nonImmuneItemsScore += s;
         }
       }
       for (const sp of spawned) {
@@ -543,7 +557,9 @@ export function scoreActionPlan(
         const dy = sp.y - cy;
         if (dx * dx + dy * dy <= r2) {
           collectedSpawnThisSim.add(sp.idx);
-          itemsScore += itemScore(sp);
+          const s = itemScore(sp);
+          if (isImmuneItem(sp)) immuneItemsScore += s;
+          else nonImmuneItemsScore += s;
         }
       }
     }
@@ -559,7 +575,9 @@ export function scoreActionPlan(
         it.y <= state.y + state.height
       ) {
         collectedStaticThisSim.add(key);
-        itemsScore += itemScore(it);
+        const s = itemScore(it);
+        if (isImmuneItem(it)) immuneItemsScore += s;
+        else nonImmuneItemsScore += s;
       }
     }
     for (const sp of spawned) {
@@ -571,20 +589,28 @@ export function scoreActionPlan(
         sp.y <= state.y + state.height
       ) {
         collectedSpawnThisSim.add(sp.idx);
-        itemsScore += itemScore(sp);
+        const s = itemScore(sp);
+        if (isImmuneItem(sp)) immuneItemsScore += s;
+        else nonImmuneItemsScore += s;
       }
     }
   }
 
+  // collision 발생한 후보는 비무적 아이템 점수 무시 — 충돌 감수 이득 성립 안 되도록.
+  // 무적 아이템(giant/dash)은 획득 후 무적 상태 시작이라 이후 obstacle 통과 → 실질 손해 없음.
+  const effectiveItemsScore =
+    collisionCount > 0
+      ? immuneItemsScore
+      : immuneItemsScore + nonImmuneItemsScore;
   const score =
-    itemsScore +
+    effectiveItemsScore +
     (pitFell ? PIT_PENALTY : 0) +
     collisionCount * COLLISION_PENALTY;
 
   return {
     score,
     details: {
-      itemsCaughtScore: itemsScore,
+      itemsCaughtScore: immuneItemsScore + nonImmuneItemsScore,
       collisionCount,
       pitFell,
       finalX: state.x,
