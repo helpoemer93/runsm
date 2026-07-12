@@ -1940,8 +1940,9 @@ export function decide(world: World): Input {
         r.baseWidth +
         effSpeed * totalAirTime +
         AVOID_HIGH_TRIGGER_MIN_SEC * effSpeed;
-      const apexHeadAir = apex + r.baseHeight;
+      const simStep = effSpeed * TICK_DURATION;
       let blockAir = false;
+      let evasionJump = false;
       if (!lastingImmuneAir) {
         for (let i = 0; i < visibleObs.length; i++) {
           const o = visibleObs[i]!;
@@ -1960,11 +1961,68 @@ export function decide(world: World): Input {
             blockAir = true;
             break;
           }
-          if (apexHeadAir > oYBottom) {
+          // 천장 obstacle — 이산 sim으로 이단점프/자연 궤적 정밀 판정.
+          // 이단점프 궤적이 obs 겹침 구간에서 봇 발 y가 지붕(oTop) 이상이면 안전 통과.
+          // 봇 자연 궤적이 obs.y 범위에 봇 몸이 걸친 상태로 진입하면 옆면 충돌 예정.
+          // 자연 진입 예정 + 이단점프 안전 통과 가능이면 회피 이단점프 발동.
+          const oTop = oYBottom + o.height;
+          const oRight = o.x + o.width;
+          let doubleSafe = true;
+          {
+            let sy = r.y;
+            let svy = r.jumpVelocity;
+            let sx = r.x;
+            let seenOverlap = false;
+            for (let st = 0; st < 200; st++) {
+              svy -= GRAVITY_ABS * TICK_DURATION;
+              sy += svy * TICK_DURATION;
+              sx += simStep;
+              if (sy <= 0) break;
+              if (sx + r.baseWidth > o.x && sx < oRight) {
+                seenOverlap = true;
+                if (sy < oTop) {
+                  doubleSafe = false;
+                  break;
+                }
+              } else if (sx >= oRight) break;
+            }
+            if (!seenOverlap) doubleSafe = false;
+          }
+          let naturalHits = false;
+          {
+            let sy = r.y;
+            let svy = r.vy;
+            let sx = r.x;
+            for (let st = 0; st < 200; st++) {
+              svy -= GRAVITY_ABS * TICK_DURATION;
+              sy += svy * TICK_DURATION;
+              sx += simStep;
+              if (sy < 0) sy = 0; // 착지 후 walking 상태로도 obs 옆면 진입 감지
+              if (sx + r.baseWidth > o.x && sx < oRight) {
+                if (sy < oTop && sy + r.baseHeight > oYBottom) {
+                  naturalHits = true;
+                  break;
+                }
+              } else if (sx >= oRight) break;
+            }
+          }
+          if (naturalHits && doubleSafe) {
+            if (!wouldLandInPitAfterDouble(world, effSpeed)) {
+              evasionJump = true;
+              break;
+            }
             blockAir = true;
             break;
           }
+          if (naturalHits) {
+            blockAir = true;
+            break;
+          }
+          // 자연 궤적 안전 → 이단점프 안 해도 이 obs 문제 없음. 다음 obs 검사.
         }
+      }
+      if (evasionJump) {
+        return { jump: true, slide: false, debugReason: "비행중 하강 회피" };
       }
       if (blockAir) {
         return { jump: false, slide: false, debugReason: "비행중 장애물 차단" };
