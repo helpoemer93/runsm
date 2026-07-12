@@ -31,10 +31,10 @@ export function bagExpandCost(currentSize: number): number {
   return currentSize * 50;
 }
 
-// 강화 비용: (현재 lv + 1)^2 × 10. lv0→1: 10, lv10→11: 1210, lv20→21: 4410, lv50→51: 26010.
+// 강화 비용: (현재 lv + 1)^2 × 100. lv0→1: 100, lv10→11: 12100, lv20→21: 44100, lv50→51: 260100.
 export function enhanceCost(currentLevel: number): number {
   const next = currentLevel + 1;
-  return next * next * 10;
+  return next * next * 100;
 }
 
 // 인스턴스 base spec + 강화 레벨로 시뮬에 줄 effective spec 생성.
