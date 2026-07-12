@@ -39,8 +39,8 @@ const DASH_ITEM_FALLBACK_TICKS = Math.round(3 / TICK_DURATION);
 const COIN_SPRAY_DURATION_TICKS = Math.round(3 / TICK_DURATION);
 const COIN_SPRAY_TRIGGER_DIST = 50; // 봇 x 누적 이동 이 값마다 트리거 1회
 const COIN_SPRAY_COUNT = 3; // 트리거당 소환 코인 수
-const COIN_SPRAY_LEAD_MIN_SEC = 0.15; // 봇 앞 소환 lead (봇 도달 시간)
-const COIN_SPRAY_LEAD_MAX_SEC = 0.3;
+const COIN_SPRAY_LEAD_MIN_SEC = 0.3; // 봇 앞 소환 lead (봇 도달 시간)
+const COIN_SPRAY_LEAD_MAX_SEC = 0.6;
 const COIN_SPRAY_Y_MIN = 0;
 const COIN_SPRAY_Y_MAX = 180;
 // coinBoost 상수 — 3초 동안 맵의 v=1 코인을 v=5로 변환. 원복 없음.
